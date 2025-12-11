@@ -35,6 +35,7 @@ hooks:
   - module: hooks-activity-tracker
     source: file:///path/to/amplifier-module-hooks-activity-tracker
     config:
+      repository: owner/repo                # GitHub repository (required)
       notify_threshold: 0.85
       embedding_model: text-embedding-3-small
       similarity_threshold: 0.7
@@ -50,12 +51,19 @@ hooks:
    export OPENAI_API_KEY="sk-..."
    ```
 
-2. **issue-manager** module installed and configured:
+2. **GitHub Tools** module installed and configured:
    ```yaml
    # Also in your profile
    tools:
-     - module: tool-issue
-       source: git+https://github.com/payneio/payne-amplifier@main#subdirectory=max_payne_collection/modules/tool-issue
+     - module: tool-github
+       source: git+https://github.com/microsoft/amplifier-module-tool-github@main
+       config:
+         token: ${GITHUB_TOKEN}  # or use GitHub App auth
+   ```
+
+3. **GitHub Token** with repo access:
+   ```bash
+   export GITHUB_TOKEN="ghp_..."
    ```
 
 ### First Use
@@ -84,11 +92,13 @@ amplifier --profile my-profile
 ## Configuration
 
 ### Hook Configuration
-
 ```yaml
 hooks:
   - module: hooks-activity-tracker
     config:
+      # Repository settings
+      repository: owner/repo        # GitHub repository (required)
+      
       # Notification settings
       notify_threshold: 0.85        # Confidence threshold (0.0-1.0)
       silent_mode: false            # Suppress all notifications
@@ -100,6 +110,7 @@ hooks:
       # Behavior settings
       auto_track_sessions: true     # Create tracking issue per session
       auto_file_ideas: true          # File discovered ideas automatically
+```   auto_file_ideas: true          # File discovered ideas automatically
 ```
 
 ### Environment Variables
@@ -109,19 +120,19 @@ hooks:
 ---
 
 ## Multi-Repo Project Groups
-
-Track work across multiple repositories:
-
 ```yaml
 # .amplifier/settings.yaml
 activity:
   project_groups:
     auth-system:
-      repos:
-        - ~/code/auth-service
-        - ~/code/user-service
-        - ~/code/auth-frontend
-      description: "Authentication system"
+      repositories:
+        - owner/auth-service
+        - owner/user-service
+        - owner/auth-frontend
+      description: \"Authentication system\"
+    
+  current_group: auth-system
+```   description: "Authentication system"
     
   current_group: auth-system
 ```

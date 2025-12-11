@@ -21,8 +21,8 @@ class TestActivityAnalyzerWithLLMMocks:
         }
         
         issues = [
-            mock_issue(issue_id="issue-1", title="Login page", description="Create login UI"),
-            mock_issue(issue_id="issue-2", title="Database schema", description="User tables"),
+            mock_issue(issue_id="issue-1", title="Login page", body="Create login UI"),
+            mock_issue(issue_id="issue-2", title="Database schema", body="User tables"),
         ]
         
         # Generate realistic mock response using LLM

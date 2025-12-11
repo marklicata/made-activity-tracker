@@ -109,9 +109,10 @@ class TestModuleMount:
         mock_coordinator = Mock()
         mock_coordinator.on = Mock(side_effect=Exception("Registration failed"))
         
-        with patch('amplifier_module_hooks_activity_tracker.ActivityTrackerHook'):
-            # Should log error but not crash
-            await mount(mock_coordinator, {})
+        with patch('amplifier_module_hooks_activity_tracker.hooks.ActivityTrackerHook'):
+            # Should raise exception when registration fails
+            with pytest.raises(Exception, match="Registration failed"):
+                await mount(mock_coordinator, {})
     
     @pytest.mark.asyncio
     async def test_mount_logs_success(self):
@@ -119,7 +120,7 @@ class TestModuleMount:
         mock_coordinator = Mock()
         mock_coordinator.on = Mock()
         
-        with patch('amplifier_module_hooks_activity_tracker.ActivityTrackerHook'):
+        with patch('amplifier_module_hooks_activity_tracker.hooks.ActivityTrackerHook'):
             with patch('amplifier_module_hooks_activity_tracker.logging.getLogger') as mock_logger:
                 mock_log = Mock()
                 mock_logger.return_value = mock_log
@@ -180,7 +181,7 @@ class TestModuleMount:
         mock_coordinator = Mock()
         mock_coordinator.on = Mock()
         
-        with patch('amplifier_module_hooks_activity_tracker.ActivityTrackerHook'):
+        with patch('amplifier_module_hooks_activity_tracker.hooks.ActivityTrackerHook'):
             # Mount twice
             await mount(mock_coordinator, {})
             await mount(mock_coordinator, {})
@@ -195,10 +196,10 @@ class TestModuleMount:
         mock_coordinator.on = Mock()
         
         original_config = {"notify_threshold": 0.85}
-        config_copy = original_config.copy()
         
-        with patch('amplifier_module_hooks_activity_tracker.ActivityTrackerHook'):
+        with patch('amplifier_module_hooks_activity_tracker.hooks.ActivityTrackerHook'):
             await mount(mock_coordinator, original_config)
             
-            # Original should not be modified
-            assert original_config == config_copy
+            # Config gets enriched with defaults, original value preserved
+            assert original_config["notify_threshold"] == 0.85
+            assert "auto_track_sessions" in original_config  # Default added

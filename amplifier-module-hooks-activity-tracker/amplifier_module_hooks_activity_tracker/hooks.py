@@ -62,15 +62,16 @@ class ActivityTrackerHook:
             # Capture context
             context = self._capture_context(event_data)
 
-            # Get issue-manager from coordinator
+            # Get coordinator
             coordinator = event_data.get("coordinator")
             if not coordinator:
                 logger.warning("No coordinator in event data")
                 return
 
-            issue_manager = coordinator.get("issue-manager")
-            if not issue_manager:
-                logger.info("issue-manager not available, skipping tracking")
+            # Extract repository from context (assumes format: owner/repo)
+            repository = self.config.get("repository")
+            if not repository:
+                logger.info("No repository configured, skipping tracking")
                 return
 
             # Determine project group
@@ -79,7 +80,7 @@ class ActivityTrackerHook:
             )
 
             # Query open work across group or single repo
-            open_work = await self._query_group_work(group_config, issue_manager)
+            open_work = await self._query_group_work(group_config, repository, coordinator)
 
             logger.info(f"Found {len(open_work)} open issues to check")
 
@@ -100,18 +101,20 @@ class ActivityTrackerHook:
             # Create session tracking issue if enabled
             if self.config.get("auto_track_sessions", True):
                 try:
-                    session_issue = issue_manager.create_issue(
-                        title=f"Session: {context['prompt'][:50]}",
-                        description=self._format_session_description(context),
-                        issue_type="task",
-                        metadata={
-                            "session_id": session_id,
-                            "auto_tracked": True,
-                            "working_dir": context["working_dir"],
+                    result = await coordinator.call_tool(
+                        "github_create_issue",
+                        {
+                            "repository": repository,
+                            "title": f"Session: {context['prompt'][:50]}",
+                            "body": self._format_session_description(context),
+                            "labels": ["activity-tracker", "auto-tracked"],
                         },
                     )
-                    self.session_issues[session_id] = session_issue.id
-                    logger.info(f"Created tracking issue: {session_issue.id}")
+                    if result.get("success"):
+                        issue_number = result.get("output", {}).get("issue", {}).get("number")
+                        if issue_number:
+                            self.session_issues[session_id] = issue_number
+                            logger.info(f"Created tracking issue: #{issue_number}")
                 except Exception as e:
                     logger.error(f"Failed to create tracking issue: {e}")
 
@@ -132,18 +135,18 @@ class ActivityTrackerHook:
 
             logger.info(f"Activity tracker: session end {session_id}")
 
-            # Get issue-manager
+            # Get coordinator
             coordinator = event_data.get("coordinator")
             if not coordinator:
                 return
 
-            issue_manager = coordinator.get("issue-manager")
-            if not issue_manager:
+            repository = self.config.get("repository")
+            if not repository:
                 return
 
             # Get session issue
-            session_issue_id = self.session_issues.get(session_id)
-            if not session_issue_id:
+            session_issue_number = self.session_issues.get(session_id)
+            if not session_issue_number:
                 logger.info("No tracking issue for this session")
                 return
 
@@ -154,35 +157,44 @@ class ActivityTrackerHook:
                     analysis = await self.analyzer.analyze_session_work(messages)
 
                     # Update session issue
-                    if analysis.get("completed"):
-                        issue_manager.close_issue(
-                            session_issue_id, reason=analysis.get("summary", "Completed")
+                    summary = analysis.get("summary", "Completed" if analysis.get("completed") else "Work in progress")
+                    state = "closed" if analysis.get("completed") else "open"
+                    
+                    try:
+                        result = await coordinator.call_tool(
+                            "github_update_issue",
+                            {
+                                "repository": repository,
+                                "issue_number": session_issue_number,
+                                "body": summary,
+                                "state": state,
+                            },
                         )
-                        logger.info(f"Closed session issue: {session_issue_id}")
-                    else:
-                        issue_manager.update_issue(
-                            session_issue_id, description=analysis.get("summary", "Work in progress")
-                        )
-                        logger.info(f"Updated session issue: {session_issue_id}")
+                        if result.get("success"):
+                            logger.info(f"Updated session issue: #{session_issue_number}")
+                    except Exception as e:
+                        logger.error(f"Failed to update session issue: {e}")
 
                     # File new ideas
                     new_ideas = analysis.get("new_ideas", [])
                     for idea in new_ideas:
                         try:
-                            new_issue = issue_manager.create_issue(
-                                title=idea.get("title", "New idea"),
-                                description=idea.get("description", ""),
-                                priority=idea.get("suggested_priority", 2),
-                                issue_type="task",
-                                discovered_from=session_issue_id,
+                            idea_body = idea.get("description", "")
+                            idea_body += f"\n\nDiscovered during session: #{session_issue_number}"
+                            
+                            result = await coordinator.call_tool(
+                                "github_create_issue",
+                                {
+                                    "repository": repository,
+                                    "title": idea.get("title", "New idea"),
+                                    "body": idea_body,
+                                    "labels": ["idea", "auto-filed"],
+                                },
                             )
-
-                            # Add discovered-from dependency
-                            issue_manager.add_dependency(
-                                new_issue.id, session_issue_id, dep_type="discovered-from"
-                            )
-
-                            logger.info(f"Filed new idea: {new_issue.id} - {idea.get('title')}")
+                            
+                            if result.get("success"):
+                                issue_number = result.get("output", {}).get("issue", {}).get("number")
+                                logger.info(f"Filed new idea: #{issue_number} - {idea.get('title')}")
                         except Exception as e:
                             logger.error(f"Failed to file idea: {e}")
 
@@ -232,60 +244,47 @@ class ActivityTrackerHook:
         return context
 
     async def _query_group_work(
-        self, group_config: dict[str, Any] | None, issue_manager: Any
-    ) -> list[Any]:
+        self, group_config: dict[str, Any] | None, repository: str, coordinator: Any
+    ) -> list[dict[str, Any]]:
         """Query open work across project group.
 
         Args:
             group_config: Project group configuration
-            issue_manager: IssueManager instance
+            repository: Repository identifier (owner/repo)
+            coordinator: Coordinator instance for calling tools
 
         Returns:
-            List of Issue objects
+            List of issue dicts
         """
         open_work = []
 
+        # Get repositories to query
+        repositories = []
         if group_config:
-            # Multi-repo: query each repo in group
-            for repo_path in group_config.get("repos", []):
-                try:
-                    repo_issues = await self._get_issues_for_repo(repo_path)
-                    open_work.extend(repo_issues)
-                except Exception as e:
-                    logger.error(f"Failed to query repo {repo_path}: {e}")
+            # Multi-repo: get repo names from config
+            repositories = group_config.get("repositories", [])
         else:
-            # Single repo: query current issue-manager
+            repositories = [repository]
+
+        # Query each repository
+        for repo in repositories:
             try:
-                open_work = issue_manager.list_issues(status="open")
+                result = await coordinator.call_tool(
+                    "github_list_issues",
+                    {
+                        "repository": repo,
+                        "state": "open",
+                        "limit": 100,
+                    },
+                )
+                
+                if result.get("success"):
+                    issues = result.get("output", {}).get("issues", [])
+                    open_work.extend(issues)
             except Exception as e:
-                logger.error(f"Failed to query issues: {e}")
+                logger.error(f"Failed to query repo {repo}: {e}")
 
         return open_work
-
-    async def _get_issues_for_repo(self, repo_path: str) -> list[Any]:
-        """Get issues from a specific repo.
-
-        Args:
-            repo_path: Path to repository
-
-        Returns:
-            List of Issue objects
-        """
-        from pathlib import Path
-
-        data_dir = Path(repo_path) / ".amplifier" / "issues"
-        if not data_dir.exists():
-            return []
-
-        try:
-            # Import here to avoid circular dependency
-            from amplifier_module_issue_manager import IssueManager
-
-            temp_manager = IssueManager(data_dir)
-            return temp_manager.list_issues(status="open")
-        except Exception as e:
-            logger.error(f"Failed to load issues from {repo_path}: {e}")
-            return []
 
     def _notify_related_work(self, event_data: dict[str, Any], related: list[dict[str, Any]]) -> None:
         """Notify user of related work.

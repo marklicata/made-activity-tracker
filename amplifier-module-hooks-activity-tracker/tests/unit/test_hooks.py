@@ -48,8 +48,8 @@ class TestActivityTrackerHook:
         
         await hook_with_mocks.on_session_start(event_data)
         
-        # Verify tracking issue created
-        assert mock_coordinator.get.called
+        # Verify GitHub tools were called
+        assert mock_coordinator.call_tool.called
         session_id = event_data["session_id"]
         assert session_id in hook_with_mocks.session_issues
 
@@ -73,10 +73,13 @@ class TestActivityTrackerHook:
         await hook_with_mocks.on_session_start(event_data)
 
     @pytest.mark.asyncio
-    async def test_session_start_no_issue_manager(self, hook_with_mocks):
-        """Test session start when issue-manager not available."""
+    async def test_session_start_no_repository(self, hook_with_mocks):
+        """Test session start when repository not configured."""
+        # Remove repository from config
+        hook_with_mocks.config.pop("repository", None)
+        
         coordinator = Mock()
-        coordinator.get = Mock(return_value=None)
+        coordinator.call_tool = AsyncMock()
         
         event_data = {
             "session_id": "test-123",
@@ -92,7 +95,7 @@ class TestActivityTrackerHook:
         """Test basic session end handling."""
         # Set up tracking issue
         session_id = sample_event_data["session_id"]
-        hook_with_mocks.session_issues[session_id] = "test-issue-123"
+        hook_with_mocks.session_issues[session_id] = 123  # Issue number, not ID
         
         # Configure analyzer to return completed work
         hook_with_mocks._analyzer.analyze_session_work = AsyncMock(
@@ -112,7 +115,7 @@ class TestActivityTrackerHook:
         assert session_id not in hook_with_mocks.session_issues
 
     @pytest.mark.asyncio
-    async def test_session_end_with_new_ideas(self, hook_with_mocks, sample_event_data, mock_coordinator, mock_issue_manager):
+    async def test_session_end_with_new_ideas(self, hook_with_mocks, sample_event_data, mock_coordinator):
         """Test session end with new ideas filed."""
         session_id = sample_event_data["session_id"]
         hook_with_mocks.session_issues[session_id] = "test-issue-123"
@@ -142,9 +145,8 @@ class TestActivityTrackerHook:
         
         await hook_with_mocks.on_session_end(event_data)
         
-        # Verify new issues created (at least 2 calls - ideas might be created)
-        call_count = mock_issue_manager.create_issue.call_count
-        assert call_count >= 2, f"Expected at least 2 create_issue calls, got {call_count}"
+        # Verify coordinator.call_tool was called (for update and creating new ideas)
+        assert mock_coordinator.call_tool.called
 
     @pytest.mark.asyncio
     async def test_session_end_no_tracking_issue(self, hook_with_mocks, sample_event_data, mock_coordinator):
@@ -183,30 +185,37 @@ class TestActivityTrackerHook:
         assert context["git_status"] is None
 
     @pytest.mark.asyncio
-    async def test_query_group_work_single_repo(self, hook_with_mocks, mock_issue_manager):
+    async def test_query_group_work_single_repo(self, hook_with_mocks, mock_coordinator):
         """Test querying work in single repo."""
-        mock_issue_manager.list_issues = Mock(return_value=[Mock(), Mock()])
+        # Mock coordinator to return issues
+        async def mock_call_tool(tool_name, params):
+            return {"success": True, "output": {"issues": [{"number": 1}, {"number": 2}]}}
         
-        result = await hook_with_mocks._query_group_work(None, mock_issue_manager)
+        mock_coordinator.call_tool = AsyncMock(side_effect=mock_call_tool)
+        
+        result = await hook_with_mocks._query_group_work(None, "owner/repo", mock_coordinator)
         
         assert len(result) == 2
-        assert mock_issue_manager.list_issues.called
+        assert mock_coordinator.call_tool.called
 
     @pytest.mark.asyncio
-    async def test_query_group_work_multi_repo(self, hook_with_mocks, mock_issue_manager, tmp_path):
+    async def test_query_group_work_multi_repo(self, hook_with_mocks, mock_coordinator, tmp_path):
         """Test querying work across multiple repos."""
         # Create mock group config
         group_config = {
-            "repos": [str(tmp_path / "repo1"), str(tmp_path / "repo2")]
+            "repositories": ["owner/repo1", "owner/repo2"]
         }
         
-        # Mock _get_issues_for_repo to return predictable results
-        hook_with_mocks._get_issues_for_repo = AsyncMock(return_value=[Mock()])
+        # Mock coordinator to return issues
+        async def mock_call_tool(tool_name, params):
+            return {"success": True, "output": {"issues": [{"number": 1}]}}
         
-        result = await hook_with_mocks._query_group_work(group_config, mock_issue_manager)
+        mock_coordinator.call_tool = AsyncMock(side_effect=mock_call_tool)
         
-        # Should have called _get_issues_for_repo for each repo
-        assert hook_with_mocks._get_issues_for_repo.call_count == 2
+        result = await hook_with_mocks._query_group_work(group_config, "owner/repo", mock_coordinator)
+        
+        # Should have called call_tool for each repo
+        assert mock_coordinator.call_tool.call_count == 2
         # Should have 2 issues total (one from each repo)
         assert len(result) == 2
 

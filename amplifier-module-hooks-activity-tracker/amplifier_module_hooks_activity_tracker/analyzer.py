@@ -92,7 +92,7 @@ class ActivityAnalyzer:
         return self._embedding_cache
 
     async def find_related_work(
-        self, context: dict[str, Any], open_issues: list[Any]
+        self, context: dict[str, Any], open_issues: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Find work items related to session context.
 
@@ -102,7 +102,7 @@ class ActivityAnalyzer:
 
         Args:
             context: Session context with prompt, working_dir, git_status, recent_files
-            open_issues: List of Issue objects from issue-manager
+            open_issues: List of issue dicts from GitHub tools API
 
         Returns:
             List of dicts with issue, confidence, reasoning, relationship_type
@@ -119,13 +119,13 @@ class ActivityAnalyzer:
             return await self._llm_only_analysis(context, open_issues[:20])
 
     async def _two_phase_analysis(
-        self, context: dict[str, Any], open_issues: list[Any]
+        self, context: dict[str, Any], open_issues: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Two-phase analysis with embeddings pre-filter.
 
         Args:
             context: Session context
-            open_issues: List of Issue objects
+            open_issues: List of issue dicts from GitHub API
 
         Returns:
             List of related work items
@@ -141,8 +141,13 @@ class ActivityAnalyzer:
         candidates = []
         for issue in open_issues:
             try:
-                issue_text = f"{issue.title} {issue.description}"
-                issue_embedding = await self._get_cached_embedding(issue.id, issue_text)
+                # GitHub API returns 'number', 'title', and 'body' (not 'id' or 'description')
+                issue_number = issue.get("number")
+                issue_title = issue.get("title", "")
+                issue_body = issue.get("body") or ""  # body can be None
+                issue_text = f"{issue_title} {issue_body}"
+                
+                issue_embedding = await self._get_cached_embedding(str(issue_number), issue_text)
 
                 if issue_embedding is not None:
                     similarity = self._cosine_similarity(context_embedding, issue_embedding)
@@ -151,7 +156,7 @@ class ActivityAnalyzer:
                     if similarity > threshold:
                         candidates.append({"issue": issue, "similarity": similarity})
             except Exception as e:
-                logger.debug(f"Failed to process issue {issue.id}: {e}")
+                logger.debug(f"Failed to process issue {issue.get('number')}: {e}")
 
         if not candidates:
             logger.info("No candidates found via embeddings, trying LLM-only")
@@ -167,13 +172,13 @@ class ActivityAnalyzer:
         return await self._llm_reasoning(context, top_candidates)
 
     async def _llm_only_analysis(
-        self, context: dict[str, Any], open_issues: list[Any]
+        self, context: dict[str, Any], open_issues: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """LLM-only analysis without embedding pre-filter.
 
         Args:
             context: Session context
-            open_issues: List of Issue objects (should be limited to ~20)
+            open_issues: List of issue dicts (should be limited to ~20)
 
         Returns:
             List of related work items
@@ -342,7 +347,11 @@ class ActivityAnalyzer:
         parts = [context.get("prompt", "")]
 
         if context.get("git_status"):
-            parts.append(f"Git changes: {context['git_status'][:200]}")
+            git_status = context["git_status"]
+            if isinstance(git_status, str):
+                parts.append(f"Git changes: {git_status[:200]}")
+            else:
+                parts.append(f"Git changes: {str(git_status)[:200]}")
 
         if context.get("recent_files"):
             files = context["recent_files"][:5]
@@ -362,10 +371,15 @@ class ActivityAnalyzer:
         Returns:
             Formatted prompt
         """
+        git_status = context.get('git_status', 'None')
+        if git_status and not isinstance(git_status, str):
+            git_status = str(git_status)
+        git_status_str = git_status[:200] if git_status else 'None'
+        
         prompt = f"""Programmer starting session:
 Prompt: {context.get('prompt')}
 Working directory: {context.get('working_dir')}
-Git status: {context.get('git_status', 'None')[:200]}
+Git status: {git_status_str}
 Recent files: {', '.join(context.get('recent_files', [])[:10])}
 
 Potentially related open work (pre-filtered by embeddings):
@@ -375,9 +389,10 @@ Potentially related open work (pre-filtered by embeddings):
         for idx, candidate in enumerate(candidates, 1):
             issue = candidate["issue"]
             sim = candidate.get("similarity", 0)
-            prompt += f"""{idx}. ID: {issue.id}
-   Title: {issue.title}
-   Description: {issue.description[:200]}
+            description = issue.get("body") or ""
+            prompt += f"""{idx}. ID: {issue.get("number")}
+   Title: {issue.get("title")}
+   Description: {description[:200]}
    Similarity: {sim:.2f}
 
 """

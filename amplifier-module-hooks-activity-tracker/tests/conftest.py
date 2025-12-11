@@ -28,6 +28,7 @@ def mock_environment(monkeypatch):
 def mock_config():
     """Standard configuration for testing."""
     return {
+        "repository": "owner/repo",
         "notify_threshold": 0.85,
         "embedding_model": "text-embedding-3-small",
         "similarity_threshold": 0.7,
@@ -39,59 +40,68 @@ def mock_config():
 
 @pytest.fixture
 def mock_issue():
-    """Create a mock issue object."""
+    """Create a mock issue dict (GitHub API format)."""
     def _create_issue(
         issue_id=None,
+        number=None,
         title="Test Issue",
-        description="Test description",
-        status="open",
-        priority=2,
-        issue_type="task",
+        body="Test description",
+        state="open",
+        labels=None,
+        assignees=None,
     ):
-        issue = Mock()
-        issue.id = issue_id or str(uuid.uuid4())
-        issue.title = title
-        issue.description = description
-        issue.status = status
-        issue.priority = priority
-        issue.issue_type = issue_type
-        issue.assignee = None
-        issue.created_at = datetime.now()
-        issue.updated_at = datetime.now()
-        issue.closed_at = None
-        issue.metadata = {}
-        return issue
+        # Support both issue_id and number for backwards compatibility
+        issue_number = number or issue_id or 123
+        return {
+            "number": issue_number,
+            "title": title,
+            "body": body,
+            "state": state,
+            "author": "testuser",
+            "labels": labels or [],
+            "assignees": assignees or [],
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "closed_at": None,
+            "comments": 0,
+            "url": f"https://github.com/owner/repo/issues/{issue_number}",
+        }
     
     return _create_issue
 
 
 @pytest.fixture
-def mock_issue_manager():
-    """Create a mock issue manager with predictable behavior."""
-    manager = Mock()
+def mock_github_tools():
+    """Create mock responses for GitHub tools."""
+    def _create_tool_response(success=True, output=None, error=None):
+        return {
+            "success": success,
+            "output": output or {},
+            "error": error,
+        }
     
-    # Create a fresh Mock each time to avoid state bleeding
-    created_issue = Mock()
-    created_issue.id = "test-issue-123"
-    created_issue.title = "Test Issue"
-    created_issue.status = "open"
-    
-    manager.create_issue = Mock(return_value=created_issue)
-    manager.update_issue = Mock(return_value=created_issue)
-    manager.close_issue = Mock(return_value=created_issue)
-    manager.list_issues = Mock(return_value=[])
-    manager.add_dependency = Mock()
-    
-    return manager
+    return _create_tool_response
 
 
 @pytest.fixture
-def mock_coordinator(mock_issue_manager):
-    """Create a mock coordinator."""
+def mock_coordinator(mock_github_tools):
+    """Create a mock coordinator with GitHub tools."""
     coordinator = Mock()
-    coordinator.get = Mock(return_value=mock_issue_manager)
     coordinator.on = Mock()
     coordinator.emit = AsyncMock()
+    
+    # Mock call_tool to return GitHub-style responses
+    async def mock_call_tool(tool_name, params):
+        if tool_name == "github_list_issues":
+            return mock_github_tools(success=True, output={"issues": [], "count": 0})
+        elif tool_name == "github_create_issue":
+            return mock_github_tools(success=True, output={"issue": {"number": 123, "title": params.get("title")}})
+        elif tool_name == "github_update_issue":
+            return mock_github_tools(success=True, output={"issue": {"number": params.get("issue_number")}})
+        else:
+            return mock_github_tools(success=False, error={"message": "Unknown tool"})
+    
+    coordinator.call_tool = AsyncMock(side_effect=mock_call_tool)
     return coordinator
 
 

@@ -5,63 +5,53 @@ from unittest.mock import Mock, AsyncMock
 from amplifier_module_hooks_activity_tracker.hooks import ActivityTrackerHook
 
 
-class MockIssueManager:
-    """Mock IssueManager that simulates issue-manager behavior."""
+class MockGitHubTools:
+    """Mock GitHub tools that simulates GitHub API behavior."""
     
     def __init__(self):
         self.issues = {}
-        self.dependencies = []
         self.next_id = 1
 
-    def create_issue(self, **kwargs):
+    def create_issue(self, title=None, body=None, **kwargs):
         """Create a mock issue."""
-        issue_id = f"test-{self.next_id}"
+        issue_number = self.next_id
         self.next_id += 1
         
-        issue = Mock()
-        issue.id = issue_id
-        issue.title = kwargs.get('title', 'Test Issue')
-        issue.description = kwargs.get('description', '')
-        issue.status = kwargs.get('status', 'open')
-        issue.priority = kwargs.get('priority', 2)
-        issue.issue_type = kwargs.get('issue_type', 'task')
-        issue.metadata = kwargs.get('metadata', {})
-        issue.discovered_from = kwargs.get('discovered_from')
+        issue = {
+            "number": issue_number,
+            "title": title or "Untitled",
+            "body": body or "",
+            "state": "open",
+            "author": "testuser",
+            "labels": [],
+            "assignees": [],
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "closed_at": None,
+            "url": f"https://github.com/owner/repo/issues/{issue_number}",
+        }
         
-        self.issues[issue_id] = issue
+        self.issues[issue_number] = issue
         return issue
 
-    def update_issue(self, issue_id, **kwargs):
+    def update_issue(self, issue_number=None, **kwargs):
         """Update a mock issue."""
-        if issue_id in self.issues:
-            issue = self.issues[issue_id]
-            for key, value in kwargs.items():
-                setattr(issue, key, value)
+        if issue_number and issue_number in self.issues:
+            issue = self.issues[issue_number]
+            if "title" in kwargs:
+                issue["title"] = kwargs["title"]
+            if "body" in kwargs:
+                issue["body"] = kwargs["body"]
+            if "state" in kwargs:
+                issue["state"] = kwargs["state"]
             return issue
         return None
 
-    def close_issue(self, issue_id, reason=None):
-        """Close a mock issue."""
-        if issue_id in self.issues:
-            issue = self.issues[issue_id]
-            issue.status = "closed"
-            issue.closed_reason = reason
-            return issue
-        return None
-
-    def list_issues(self, status=None):
+    def list_issues(self, state=None, **kwargs):
         """List mock issues."""
-        if status:
-            return [i for i in self.issues.values() if i.status == status]
+        if state:
+            return [i for i in self.issues.values() if i["state"] == state]
         return list(self.issues.values())
-
-    def add_dependency(self, from_id, to_id, dep_type="blocks"):
-        """Add a dependency."""
-        self.dependencies.append({
-            "from": from_id,
-            "to": to_id,
-            "type": dep_type
-        })
 
 
 class TestFullWorkflow:
@@ -69,14 +59,37 @@ class TestFullWorkflow:
 
     @pytest.fixture
     def mock_issue_manager_integration(self):
-        """Create mock issue manager with state tracking."""
-        return MockIssueManager()
+        """Create mock GitHub tools with state tracking."""
+        return MockGitHubTools()
 
     @pytest.fixture
     def coordinator_with_issue_manager(self, mock_issue_manager_integration):
-        """Create coordinator with mock issue manager."""
+        """Create coordinator with mock GitHub tools."""
         coordinator = Mock()
-        coordinator.get = Mock(return_value=mock_issue_manager_integration)
+        
+        # Mock call_tool to interact with GitHub tools
+        async def mock_call_tool(tool_name, params):
+            if tool_name == "github_create_issue":
+                issue = mock_issue_manager_integration.create_issue(
+                    title=params.get("title"), body=params.get("body")
+                )
+                return {"success": True, "output": {"issue": issue}}
+            elif tool_name == "github_update_issue":
+                # Extract issue_number and pass other params
+                issue_number = params.get("issue_number")
+                update_params = {k: v for k, v in params.items() if k != "issue_number"}
+                issue = mock_issue_manager_integration.update_issue(
+                    issue_number=issue_number, **update_params
+                )
+                return {"success": True, "output": {"issue": issue}}
+            elif tool_name == "github_list_issues":
+                issues = mock_issue_manager_integration.list_issues(
+                    state=params.get("state")
+                )
+                return {"success": True, "output": {"issues": issues}}
+            return {"success": False, "error": {"message": "Unknown tool"}}
+        
+        coordinator.call_tool = AsyncMock(side_effect=mock_call_tool)
         return coordinator
 
     @pytest.mark.asyncio
@@ -122,8 +135,8 @@ class TestFullWorkflow:
         # Verify session tracking issue created
         assert len(mock_issue_manager_integration.issues) == 1
         session_issue = list(mock_issue_manager_integration.issues.values())[0]
-        assert "Session:" in session_issue.title
-        assert session_issue.status != "closed"
+        assert "Session:" in session_issue["title"]
+        assert session_issue["state"] != "closed"
 
         # Session end
         end_event = {
@@ -138,17 +151,12 @@ class TestFullWorkflow:
         await hook.on_session_end(end_event)
 
         # Verify session issue closed
-        assert session_issue.status == "closed"
+        assert session_issue["state"] == "closed"
 
         # Verify new idea filed
         assert len(mock_issue_manager_integration.issues) == 2
         new_idea = [i for i in mock_issue_manager_integration.issues.values() if i != session_issue][0]
-        assert "rate limiting" in new_idea.title.lower()
-
-        # Verify dependency created
-        assert len(mock_issue_manager_integration.dependencies) >= 1
-        dep = mock_issue_manager_integration.dependencies[0]
-        assert dep["type"] == "discovered-from"
+        assert "rate limiting" in new_idea["title"].lower()
 
     @pytest.mark.asyncio
     async def test_duplicate_detection_workflow(
@@ -158,7 +166,7 @@ class TestFullWorkflow:
         # Create existing issue
         existing = mock_issue_manager_integration.create_issue(
             title="Implement OAuth authentication",
-            description="Add OAuth 2.0 support"
+            body="Add OAuth 2.0 support"
         )
 
         # Create hook
@@ -236,7 +244,7 @@ class TestFullWorkflow:
 
         # Verify issue is updated but not closed
         session_issue = list(mock_issue_manager_integration.issues.values())[0]
-        assert session_issue.status != "closed"
+        assert session_issue["state"] != "closed"
 
     @pytest.mark.asyncio
     async def test_error_recovery_workflow(

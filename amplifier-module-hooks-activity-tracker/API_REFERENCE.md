@@ -8,7 +8,8 @@
 - `embedding_cache` -> lazy-loads EmbeddingCache
 
 ### Methods
-- `async find_related_work(context: dict, open_issues: list) -> list[dict]`
+- `async find_related_work(context: dict, open_issues: list[dict]) -> list[dict]`
+  - Args: open_issues is a list of issue dicts from GitHub tools (with 'number', 'title', 'body')
   - Returns list of dicts with: issue, confidence, reasoning, relationship_type
   - Uses two-phase analysis (embeddings + LLM), falls back to LLM-only
   

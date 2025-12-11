@@ -16,7 +16,7 @@ An intelligent activity tracking system that:
 - **Minimal overhead** - <2s impact on session start
 
 ### Key Innovation
-Building on Paul's existing `issue-manager` module instead of external tools means we only need to add the intelligence layer - storage and CRUD are already done!
+Building on the GitHub issue tools module means we only need to add the intelligence layer - issue retrieval and management are already done!
 
 ---
 

@@ -1,6 +1,6 @@
 # Activity Tracking System v2 - Simplified Specification
 
-**Building on payneio/issue-manager**
+**Building on amplifier-module-tool-github**
 
 **Version**: 2.0  
 **Date**: 2025-11-20  
@@ -10,9 +10,9 @@
 
 ## Executive Summary
 
-An activity tracking system that extends the existing `issue-manager` module with LLM-powered duplicate detection and automatic session tracking. By building on Paul Payne's issue-manager, we get ~60% of the functionality for free and only need to add the intelligence layer.
+An activity tracking system that uses GitHub issue tools for LLM-powered duplicate detection and automatic session tracking. By leveraging the GitHub issue tools module, we get issue retrieval capabilities and can focus purely on intelligent analysis.
 
-**Key Insight**: Don't rebuild storage/CRUD - enhance existing solid foundation with AI capabilities.
+**Key Insight**: Don't manage storage/CRUD - use existing GitHub tools and focus on AI-powered analysis.
 
 ---
 
@@ -23,16 +23,15 @@ An activity tracking system that extends the existing `issue-manager` module wit
 1. **hooks-activity-tracker** - Session lifecycle integration
 2. **Activity Analyzer** - LLM + embedding analysis
 3. **Project Group Manager** - Multi-repo coordination
-4. **Enhancements to tool-issue** - Add search with LLM analysis
 
 ### 1.2 Existing Components (What We Get for Free)
 
-1. ✅ **issue-manager** - Storage, CRUD, dependencies, events
-2. ✅ **tool-issue** - Tool wrapper for issue operations
-3. ✅ Data models (Issue, Dependency, IssueEvent)
-4. ✅ Dependency tracking with cycle detection
-5. ✅ Ready work detection (leaf-based algorithm)
-6. ✅ JSONL storage with defensive I/O
+1. ✅ **amplifier-module-tool-github** - GitHub API integration for issues
+   - `github_list_issues` - List and filter issues
+   - `github_get_issue` - Get issue details
+   - `github_create_issue` - Create new issues
+   - `github_update_issue` - Update existing issues
+   - `github_comment_issue` - Add comments to issues
 
 ---
 
@@ -65,18 +64,18 @@ User Session
 └──────────────┬──────────────────────┘
                ↓
 ┌─────────────────────────────────────┐
-│  tool-issue (ENHANCE)                │
-│  • Existing: CRUD operations         │
-│  • Add: search with LLM              │
-│  • Add: group operations             │
+│  amplifier-module-tool-github        │
+│  ✅ github_list_issues               │
+│  ✅ github_get_issue                 │
+│  ✅ github_create_issue              │
+│  ✅ github_update_issue              │
+│  ✅ github_comment_issue             │
 └──────────────┬──────────────────────┘
                ↓
 ┌─────────────────────────────────────┐
-│  issue-manager (EXISTING)            │
-│  ✅ ALL storage & CRUD               │
-│  ✅ Dependencies & cycles            │
-│  ✅ Ready work detection             │
-│  ✅ Event tracking                   │
+│  GitHub API                          │
+│  • Issues & comments                 │
+│  • Repository access                 │
 └──────────────────────────────────────┘
 ```
 
@@ -88,10 +87,10 @@ User Session
 2. hooks-activity-tracker.on_session_start() fires
 3. Capture context (prompt, git status, files)
 4. Determine project group (if any)
-5. Query issue-manager.list_issues(status='open') across group repos
+5. Call github_list_issues(state='open') across group repos
 6. ActivityAnalyzer.find_related_work() runs two-phase analysis
 7. If high-confidence matches (>0.85), notify user
-8. Create session tracking issue via issue-manager
+8. Create session tracking issue via github_create_issue
 ```
 
 **Session End**:
@@ -99,9 +98,9 @@ User Session
 1. User exits or session compacts
 2. hooks-activity-tracker.on_session_end() fires
 3. ActivityAnalyzer.analyze_session_work() extracts ideas
-4. Update session issue status via issue-manager
-5. Create new issues for discovered ideas via issue-manager
-6. Link with discovered-from dependencies
+4. Update session issue status via github_update_issue
+5. Create new issues for discovered ideas via github_create_issue
+6. Add comments linking related work via github_comment_issue
 ```
 
 ---
@@ -117,7 +116,7 @@ User Session
 - `session:end`
 
 **Dependencies**:
-- `issue-manager` (via coordinator.get('issue-manager'))
+- `amplifier-module-tool-github` (via coordinator tools)
 - `ActivityAnalyzer`
 - `ProjectGroupManager`
 

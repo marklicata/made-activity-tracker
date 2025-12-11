@@ -40,8 +40,11 @@ def format_notification(related_items: list[dict[str, Any]]) -> str:
         rel_type = item.get("relationship_type", "related")
 
         if issue:
+            # GitHub API returns 'number' and 'title' (not 'id')
+            issue_number = issue.get("number")
+            issue_title = issue.get("title", "Untitled")
             lines.append(
-                f"  • {issue.id}: \"{issue.title}\" "
+                f"  • #{issue_number}: \"{issue_title}\" "
                 f"(confidence: {confidence:.0%}, {rel_type})"
             )
             if reasoning:

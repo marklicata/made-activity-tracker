@@ -79,35 +79,33 @@ class TestActivityAnalyzer:
         }
         
         issues = [
-            mock_issue(issue_id="test-1", title="Login system", description="Add login"),
-            mock_issue(issue_id="test-2", title="Database setup", description="Setup DB"),
+            mock_issue(number=1, title="Login system", body="Add login"),
+            mock_issue(number=2, title="Database setup", body="Setup DB"),
         ]
         
         # Mock LLM response
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = """
-        ```json
         {
             "related_items": [
                 {
-                    "issue_id": "test-1",
+                    "issue_number": 1,
                     "confidence": 0.9,
                     "reasoning": "Both about authentication",
                     "relationship_type": "duplicate"
                 }
             ]
         }
-        ```
         """
         
         analyzer._llm_client = AsyncMock()
         analyzer._llm_client.chat.completions.create = AsyncMock(return_value=mock_response)
         
-        result = await analyzer.find_related_work(context, issues, use_embeddings=False)
+        result = await analyzer.find_related_work(context, issues)
         
         assert len(result) == 1
-        assert result[0]["issue"].id == "test-1"
+        assert result[0]["issue"]["number"] == 1
         assert result[0]["confidence"] == 0.9
         assert result[0]["relationship_type"] == "duplicate"
     
@@ -123,8 +121,8 @@ class TestActivityAnalyzer:
         }
         
         issues = [
-            mock_issue(issue_id="test-1", title="Payment gateway", description="Stripe integration"),
-            mock_issue(issue_id="test-2", title="User profiles", description="Profile page"),
+            mock_issue(number=1, title="Payment gateway", body="Stripe integration"),
+            mock_issue(number=2, title="User profiles", body="Profile page"),
         ]
         
         # Mock embedding generator
@@ -147,7 +145,7 @@ class TestActivityAnalyzer:
         {
             "related_items": [
                 {
-                    "issue_id": "test-1",
+                    "issue_number": 1,
                     "confidence": 0.95,
                     "reasoning": "Both about payment processing",
                     "relationship_type": "duplicate"
@@ -159,10 +157,10 @@ class TestActivityAnalyzer:
         analyzer._llm_client = AsyncMock()
         analyzer._llm_client.chat.completions.create = AsyncMock(return_value=mock_response)
         
-        result = await analyzer.find_related_work(context, issues, use_embeddings=True)
+        result = await analyzer.find_related_work(context, issues)
         
         assert len(result) == 1
-        assert result[0]["issue"].id == "test-1"
+        assert result[0]["issue"]["number"] == 1
         assert result[0]["confidence"] == 0.95
     
     @pytest.mark.asyncio
@@ -176,7 +174,7 @@ class TestActivityAnalyzer:
         analyzer._llm_client = AsyncMock()
         analyzer._llm_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         
-        result = await analyzer.find_related_work(context, issues, use_embeddings=False)
+        result = await analyzer.find_related_work(context, issues)
         
         # Should return empty list on error
         assert result == []
@@ -196,7 +194,7 @@ class TestActivityAnalyzer:
         analyzer._llm_client = AsyncMock()
         analyzer._llm_client.chat.completions.create = AsyncMock(return_value=mock_response)
         
-        result = await analyzer.find_related_work(context, issues, use_embeddings=False)
+        result = await analyzer.find_related_work(context, issues)
         
         assert result == []
     
@@ -207,7 +205,7 @@ class TestActivityAnalyzer:
         
         result = await analyzer.analyze_session_work([])
         
-        assert result == {}
+        assert result == {"completed": False, "summary": "Empty session", "new_ideas": []}
     
     @pytest.mark.asyncio
     async def test_analyze_session_work_with_ideas(self, mock_config):
@@ -260,7 +258,7 @@ class TestActivityAnalyzer:
         
         result = await analyzer.analyze_session_work(messages)
         
-        assert result == {}
+        assert result == {"completed": False, "summary": "Analysis error", "new_ideas": []}
     
     def test_compute_similarity_cosine(self, mock_config):
         """Test cosine similarity computation."""
