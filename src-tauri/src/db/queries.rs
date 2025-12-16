@@ -719,3 +719,273 @@ pub struct SyncStats {
     pub users: i64,
     pub repositories: i64,
 }
+
+// ============================================================================
+// FILTERED METRICS QUERIES (for dashboard filters)
+// ============================================================================
+
+/// Get issues with optional filters for metrics
+pub fn get_issues_for_metrics_filtered(
+    conn: &Connection,
+    since: &str,
+    until: Option<&str>,
+    excluded_bots: &[String],
+    repo_ids: Option<&[i64]>,
+    user_id: Option<i64>,
+    squad_member_ids: Option<&[i64]>,
+) -> Result<Vec<Issue>> {
+    let mut query = String::from(
+        "SELECT i.id, i.github_id, i.repo_id, i.number, i.title, i.body, i.state,
+                i.author_id, i.assignee_id, i.milestone_id, i.created_at, i.updated_at,
+                i.closed_at, i.labels, i.embedding_id, u.login
+         FROM issues i
+         LEFT JOIN users u ON i.author_id = u.id
+         WHERE i.created_at >= ?1"
+    );
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(since.to_string())];
+    let mut param_idx = 2;
+
+    // Add date range end filter
+    if let Some(end) = until {
+        query.push_str(&format!(" AND i.created_at <= ?{}", param_idx));
+        params_vec.push(Box::new(end.to_string()));
+        param_idx += 1;
+    }
+
+    // Add repository filter
+    if let Some(repos) = repo_ids {
+        if !repos.is_empty() {
+            let placeholders = (0..repos.len())
+                .map(|idx| format!("?{}", param_idx + idx))
+                .collect::<Vec<_>>()
+                .join(", ");
+            query.push_str(&format!(" AND i.repo_id IN ({})", placeholders));
+            for &repo_id in repos {
+                params_vec.push(Box::new(repo_id));
+            }
+            param_idx += repos.len();
+        }
+    }
+
+    // Add user filter
+    if let Some(uid) = user_id {
+        query.push_str(&format!(" AND i.author_id = ?{}", param_idx));
+        params_vec.push(Box::new(uid));
+        param_idx += 1;
+    }
+
+    // Add squad filter (members)
+    if let Some(member_ids) = squad_member_ids {
+        if !member_ids.is_empty() {
+            let placeholders = (0..member_ids.len())
+                .map(|idx| format!("?{}", param_idx + idx))
+                .collect::<Vec<_>>()
+                .join(", ");
+            query.push_str(&format!(" AND i.author_id IN ({})", placeholders));
+            for &member_id in member_ids {
+                params_vec.push(Box::new(member_id));
+            }
+        }
+    }
+
+    let mut stmt = conn.prepare(&query)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter()
+        .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+        .collect();
+
+    let issues = stmt.query_map(param_refs.as_slice(), |row| {
+        let labels_json: String = row.get(13)?;
+        let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
+        let author_login: Option<String> = row.get(15)?;
+
+        Ok((Issue {
+            id: row.get(0)?,
+            github_id: row.get(1)?,
+            repo_id: row.get(2)?,
+            number: row.get(3)?,
+            title: row.get(4)?,
+            body: row.get(5)?,
+            state: row.get(6)?,
+            author_id: row.get(7)?,
+            assignee_id: row.get(8)?,
+            milestone_id: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+            closed_at: row.get(12)?,
+            labels,
+            embedding_id: row.get(14)?,
+        }, author_login))
+    })?
+    .filter_map(|result| {
+        match result {
+            Ok((issue, author_login)) => {
+                if let Some(login) = author_login {
+                    if is_bot_user(&login, excluded_bots) {
+                        return None;
+                    }
+                }
+                Some(Ok(issue))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(issues)
+}
+
+/// Get PRs with optional filters for metrics
+pub fn get_prs_for_metrics_filtered(
+    conn: &Connection,
+    since: &str,
+    until: Option<&str>,
+    excluded_bots: &[String],
+    repo_ids: Option<&[i64]>,
+    user_id: Option<i64>,
+    squad_member_ids: Option<&[i64]>,
+) -> Result<Vec<PullRequest>> {
+    let mut query = String::from(
+        "SELECT p.id, p.github_id, p.repo_id, p.number, p.title, p.body, p.state,
+                p.author_id, p.created_at, p.updated_at, p.merged_at, p.closed_at,
+                p.additions, p.deletions, p.changed_files, p.review_comments,
+                p.labels, p.embedding_id, u.login
+         FROM pull_requests p
+         LEFT JOIN users u ON p.author_id = u.id
+         WHERE p.created_at >= ?1"
+    );
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(since.to_string())];
+    let mut param_idx = 2;
+
+    // Add date range end filter
+    if let Some(end) = until {
+        query.push_str(&format!(" AND p.created_at <= ?{}", param_idx));
+        params_vec.push(Box::new(end.to_string()));
+        param_idx += 1;
+    }
+
+    // Add repository filter
+    if let Some(repos) = repo_ids {
+        if !repos.is_empty() {
+            let placeholders = (0..repos.len())
+                .map(|idx| format!("?{}", param_idx + idx))
+                .collect::<Vec<_>>()
+                .join(", ");
+            query.push_str(&format!(" AND p.repo_id IN ({})", placeholders));
+            for &repo_id in repos {
+                params_vec.push(Box::new(repo_id));
+            }
+            param_idx += repos.len();
+        }
+    }
+
+    // Add user filter
+    if let Some(uid) = user_id {
+        query.push_str(&format!(" AND p.author_id = ?{}", param_idx));
+        params_vec.push(Box::new(uid));
+        param_idx += 1;
+    }
+
+    // Add squad filter (members)
+    if let Some(member_ids) = squad_member_ids {
+        if !member_ids.is_empty() {
+            let placeholders = (0..member_ids.len())
+                .map(|idx| format!("?{}", param_idx + idx))
+                .collect::<Vec<_>>()
+                .join(", ");
+            query.push_str(&format!(" AND p.author_id IN ({})", placeholders));
+            for &member_id in member_ids {
+                params_vec.push(Box::new(member_id));
+            }
+        }
+    }
+
+    let mut stmt = conn.prepare(&query)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter()
+        .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+        .collect();
+
+    let prs = stmt.query_map(param_refs.as_slice(), |row| {
+        let labels_json: String = row.get(16)?;
+        let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
+        let author_login: Option<String> = row.get(18)?;
+
+        Ok((PullRequest {
+            id: row.get(0)?,
+            github_id: row.get(1)?,
+            repo_id: row.get(2)?,
+            number: row.get(3)?,
+            title: row.get(4)?,
+            body: row.get(5)?,
+            state: row.get(6)?,
+            author_id: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            merged_at: row.get(10)?,
+            closed_at: row.get(11)?,
+            additions: row.get(12)?,
+            deletions: row.get(13)?,
+            changed_files: row.get(14)?,
+            review_comments: row.get(15)?,
+            labels,
+            embedding_id: row.get(17)?,
+        }, author_login))
+    })?
+    .filter_map(|result| {
+        match result {
+            Ok((pr, author_login)) => {
+                if let Some(login) = author_login {
+                    if is_bot_user(&login, excluded_bots) {
+                        return None;
+                    }
+                }
+                Some(Ok(pr))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(prs)
+}
+
+// ============================================================================
+// HELPER QUERIES FOR FILTERS
+// ============================================================================
+
+/// Get squad member user IDs
+pub fn get_squad_member_ids(conn: &Connection, squad_id: &str) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT user_id FROM squad_members WHERE squad_id = ?1"
+    )?;
+
+    let ids = stmt.query_map(params![squad_id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ids)
+}
+
+/// Get all non-bot users for filtering
+pub fn get_all_users(conn: &Connection) -> Result<Vec<User>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, github_id, login, name, avatar_url, is_bot
+         FROM users
+         WHERE is_bot = FALSE
+         ORDER BY login ASC"
+    )?;
+
+    let users = stmt.query_map([], |row| {
+        Ok(User {
+            id: row.get(0)?,
+            github_id: row.get(1)?,
+            login: row.get(2)?,
+            name: row.get(3)?,
+            avatar_url: row.get(4)?,
+            is_bot: row.get(5)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(users)
+}

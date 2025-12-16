@@ -54,3 +54,12 @@ pub async fn get_sync_stats(state: tauri::State<'_, crate::db::AppState>) -> Res
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
     crate::db::queries::get_sync_stats(&conn).map_err(|e| e.to_string())
 }
+
+/// Get all non-bot users for filtering
+#[tauri::command]
+pub async fn get_all_users(
+    state: tauri::State<'_, crate::db::AppState>
+) -> Result<Vec<crate::db::models::User>, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+    crate::db::queries::get_all_users(&conn).map_err(|e| e.to_string())
+}

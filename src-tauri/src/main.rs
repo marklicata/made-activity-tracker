@@ -48,9 +48,12 @@ fn main() {
             config::commands::load_config,
             config::commands::save_config,
             config::commands::get_sync_stats,
-            
+            config::commands::get_all_users,
+
             // Metrics commands
             metrics::commands::get_dashboard_metrics,
+            metrics::commands::get_dashboard_metrics_filtered,
+            metrics::commands::get_metrics_timeseries,
             metrics::commands::get_user_metrics,
             metrics::commands::get_squad_metrics,
             
