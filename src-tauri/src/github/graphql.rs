@@ -54,18 +54,28 @@ pub async fn execute_query<T: for<'de> Deserialize<'de>>(
         });
     }
 
-    let response_body: GraphQLResponse<T> = serde_json::from_str(&body)
+    // First, try to parse as a raw value to check for errors
+    let raw_value: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| GraphQLExecuteError::ParseError(format!("{}. Body: {}", e, body)))?;
 
-    if let Some(errors) = response_body.errors {
-        // Check for SAML errors
+    // Check if there are errors in the response
+    if let Some(errors_value) = raw_value.get("errors") {
+        let errors: Vec<GraphQLError> = serde_json::from_value(errors_value.clone())
+            .map_err(|e| GraphQLExecuteError::ParseError(format!("Failed to parse errors: {}", e)))?;
+
+        // Check for SAML errors first
         if let Some(saml_error) = detect_saml_error(&errors, &variables) {
             return Err(saml_error);
         }
 
+        // Return generic GraphQL errors
         let error_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
         return Err(GraphQLExecuteError::GraphQLErrors(error_messages.join(", ")));
     }
+
+    // Now try to parse the full response with typed data
+    let response_body: GraphQLResponse<T> = serde_json::from_value(raw_value)
+        .map_err(|e| GraphQLExecuteError::ParseError(format!("{}. Body: {}", e, body)))?;
 
     response_body.data.ok_or(GraphQLExecuteError::NoData)
 }
