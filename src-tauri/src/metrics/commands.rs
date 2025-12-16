@@ -111,7 +111,8 @@ pub async fn get_dashboard_metrics_filtered(
     ).map_err(|e| e.to_string())?;
 
     // Calculate days in period
-    let days_in_period = 90; // TODO: Calculate from date range
+    // TODO: Calculate actual days from date range instead of hardcoding
+    let days_in_period = 90;
 
     let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, days_in_period);
 

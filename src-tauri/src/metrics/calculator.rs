@@ -90,7 +90,11 @@ fn calculate_speed_metrics(
         avg_cycle_time_days: round_to_decimals(avg_cycle_time, 1),
         avg_pr_lead_time_hours: round_to_decimals(avg_pr_lead_time, 1),
         throughput_per_week: round_to_decimals(throughput, 1),
-        trend: 0.0, // TODO: Calculate vs previous period
+        // TODO: Calculate vs previous period
+        // Requires: Fetching data for 2x the period (e.g., 180 days for 90-day view)
+        // Split into two periods, calculate metrics for each, return % change
+        // Negative = improvement for time-based metrics
+        trend: 0.0,
     }
 }
 
