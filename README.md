@@ -1,440 +1,329 @@
-# Activity Tracker for Amplifier - Project Overview
+# MADE Activity Tracker
 
-**Status**: ✅ Planning Complete, Ready for Implementation  
-**Estimated Effort**: 50-70 hours (60% reduction from original plan)  
-**Architecture**: Built on Paul Payne's issue-manager module
+**Metrics for Activity, Delivery & Efficiency**
 
----
-
-## 🎯 What We're Building
-
-An intelligent activity tracking system that:
-- **Automatically detects** duplicate work when developers start new tasks
-- **Files new ideas** discovered during development
-- **Coordinates across repos** for multi-repo projects
-- **Uses LLM + embeddings** for accurate duplicate detection
-- **Minimal overhead** - <2s impact on session start
-
-### Key Innovation
-Building on the GitHub issue tools module means we only need to add the intelligence layer - issue retrieval and management are already done!
+A desktop app for tracking GitHub team activity across multiple repositories with semantic search and productivity insights.
 
 ---
 
-## 📚 Documentation
+## 🚀 Project Status: Phase 1 Complete
 
-### Core Documents (Start Here)
+✅ **What's Working:**
+- ✅ GitHub OAuth Device Flow authentication
+- ✅ SQLite database with full schema
+- ✅ GitHub GraphQL sync (issues, PRs, milestones, reviews)
+- ✅ FastEmbed local embeddings (all-MiniLM-L6-v2)
+- ✅ Business days calculations
+- ✅ Metrics engine (Speed, Ease, Quality)
+- ✅ Settings UI for repo/squad configuration
+- ✅ React frontend scaffold with routing
 
-1. **[SPECIFICATION_V2.md](SPECIFICATION_V2.md)** (24KB)
-   - Complete technical specification
-   - Architecture design
-   - Data models and flows
-   - Integration with issue-manager
-   - **READ THIS FIRST**
-
-2. **[TASKS.md](TASKS.md)** (18KB)
-   - 28 detailed tasks across 4 phases
-   - Hour estimates per task
-   - Dependencies and priorities
-   - Acceptance criteria
-   - **YOUR IMPLEMENTATION ROADMAP**
-
-3. **[TESTING_STRATEGY.md](TESTING_STRATEGY.md)** (22KB)
-   - Unit, integration, performance, E2E tests
-   - Coverage goals (>80%)
-   - Test frameworks and tools
-   - Example test code
-   - **QUALITY ASSURANCE GUIDE**
-
-4. **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** (19KB)
-   - Repository structure
-   - Module breakdown
-   - Data flows
-   - Configuration examples
-   - **ARCHITECTURE REFERENCE**
-
-### Supporting Documents
-
-5. **[SPECIFICATION.md](SPECIFICATION.md)** (46KB)
-   - Original design with Beads substrate
-   - Archived for reference
-   - Shows evolution of thinking
+⏳ **Not Yet Implemented:**
+- LanceDB integration for vector search
+- Duplicate detection
+- Full dashboard visualizations
+- Squad-specific metrics filtering
 
 ---
 
-## 🚀 Quick Start
+## 📋 Prerequisites
 
-### Phase 1: MVP (Week 1-2, ~25 hours)
+1. **Node.js** 18+ and npm
+2. **Rust** 1.75+ ([install via rustup](https://rustup.rs/))
+3. **GitHub OAuth App**:
+   - Go to: https://github.com/settings/developers
+   - Click "New OAuth App"
+   - Enable "Device Flow"
+   - Copy the **Client ID**
 
-**What You'll Build**:
-- Hook module that captures session start/end
-- Simple LLM-based duplicate detection
-- Integration with issue-manager
-- Basic notification system
+---
 
-**How to Start**:
+## 🛠️ Setup Instructions
+
+### 1. Install Dependencies
+
 ```bash
-# 1. Set up project
-cd C:\ANext\activity-tracker
-mkdir amplifier-module-hooks-activity-tracker
-cd amplifier-module-hooks-activity-tracker
+cd C:\Users\malicata\source\made-activity-tracker
 
-# 2. Initialize Python project
-python -m venv venv
-venv\Scripts\activate
-pip install amplifier-core openai pyyaml pytest
+# Install npm packages
+npm install
 
-# 3. Create module structure (see PROJECT_STRUCTURE.md)
-# 4. Start with Task 1.1 in TASKS.md
+# Rust dependencies will be installed on first build
 ```
 
-**First Tasks**:
-- [ ] Task 1.1: Module Scaffold (2 hours)
-- [ ] Task 1.2: Context Capture (3 hours)
-- [ ] Task 1.3: Session Start Hook (4 hours)
+### 2. Configure GitHub OAuth
 
----
+Edit `src-tauri/src/github/commands.rs`:
 
-## 📋 Implementation Phases
-
-### Phase 1: MVP - Basic Tracking
-**Duration**: 1-2 weeks  
-**Effort**: ~25 hours  
-**Tasks**: 10 tasks  
-**Goal**: Prove concept with core functionality
-
-**Deliverables**:
-- ✅ Session start/end hooks
-- ✅ Context capture (prompt, git, files)
-- ✅ Simple LLM duplicate detection
-- ✅ Session tracking in issue-manager
-- ✅ Basic idea filing
-
----
-
-### Phase 2: Enhanced Analysis
-**Duration**: 1 week  
-**Effort**: ~20 hours  
-**Tasks**: 7 tasks  
-**Goal**: Add embeddings for speed and accuracy
-
-**Deliverables**:
-- ✅ Embedding generation (OpenAI)
-- ✅ Embedding cache (SQLite)
-- ✅ Two-phase matching (embeddings → LLM)
-- ✅ Performance optimization
-- ✅ <5s analysis for 100 issues
-
----
-
-### Phase 3: Multi-Repo Support
-**Duration**: 1 week  
-**Effort**: ~15 hours  
-**Tasks**: 5 tasks  
-**Goal**: Project groups and cross-repo coordination
-
-**Deliverables**:
-- ✅ ProjectGroupManager
-- ✅ Multi-repo issue querying
-- ✅ Smart repo selection for new issues
-- ✅ Enhanced tool-issue operations
-- ✅ Cross-repo duplicate detection
-
----
-
-### Phase 4: Polish & Production
-**Duration**: 3-5 days  
-**Effort**: ~10 hours  
-**Tasks**: 6 tasks  
-**Goal**: Production-ready release
-
-**Deliverables**:
-- ✅ Comprehensive error handling
-- ✅ Full test suite (>80% coverage)
-- ✅ Complete documentation
-- ✅ Performance validation
-- ✅ v1.0.0 release
-
----
-
-## 🏗️ Architecture Overview
-
-```
-User Session
-    ↓
-┌─────────────────────────────────┐
-│  hooks-activity-tracker (NEW)   │ ← What we're building
-│  • Session lifecycle hooks      │
-│  • LLM-powered analysis         │
-│  • Multi-repo coordination      │
-└────────────┬────────────────────┘
-             ↓
-┌─────────────────────────────────┐
-│  issue-manager (EXISTING) ✅    │ ← Paul's module (already done!)
-│  • Storage & CRUD               │
-│  • Dependencies & cycles        │
-│  • Ready work detection         │
-│  • Event tracking               │
-└─────────────────────────────────┘
+```rust
+// Replace with your GitHub OAuth App Client ID
+const GITHUB_CLIENT_ID: &str = "YOUR_CLIENT_ID_HERE";
 ```
 
-**Key Insight**: We're building a thin intelligence layer on top of solid existing infrastructure.
+### 3. Run the App
+
+```bash
+npm run tauri dev
+```
+
+**First Run:**
+- FastEmbed will download ~80MB model (one-time, cached locally)
+- Takes ~30 seconds to initialize
 
 ---
 
-## 🧪 Testing Strategy
+## 📖 Usage Guide
 
-### Coverage Goals
-- **Overall**: >80%
-- **Critical paths**: >85%
-- **Data integrity**: >95%
+### Initial Setup
 
-### Test Levels
-1. **Unit Tests** (60%) - Individual functions
-2. **Integration Tests** (30%) - Module interactions
-3. **E2E Tests** (10%) - Full workflows
+1. **Login with GitHub**
+   - Click "Sign in with GitHub"
+   - Browser opens with device code
+   - Enter the code shown in the app
+   - Approve access
 
-### Key Test Areas
-- Context capture (git, files, prompts)
-- LLM analysis and parsing
-- Embedding generation and caching
-- Multi-repo coordination
-- Error handling and recovery
+2. **Configure Repositories**
+   - Go to Settings → Repositories
+   - Add repos: `owner/repo-name` format
+   - Example: `facebook/react`, `microsoft/vscode`
+   - Enable/disable repos as needed
 
-See [TESTING_STRATEGY.md](TESTING_STRATEGY.md) for detailed test plans.
+3. **Configure Squads** (optional)
+   - Go to Settings → Squads
+   - Create squad groups for your teams
+   - Add GitHub usernames to each squad
 
----
+4. **First Sync**
+   - Click "Sync Now" in the app
+   - Initial sync takes ~2-5 minutes for 25 repos
+   - Progress bar shows status
 
-## 📊 Success Metrics
+### Daily Workflow
 
-### Phase 1 (MVP)
-- [ ] Detects obvious duplicates >80% of time
-- [ ] Files ideas automatically with >90% accuracy
-- [ ] Zero unhandled exceptions
-- [ ] Setup time <10 minutes
-
-### Phase 2 (Enhanced)
-- [ ] Analysis <5s for 100 issues
-- [ ] False positive rate <10%
-- [ ] Cache hit rate >70%
-- [ ] User satisfaction 7/10+
-
-### Phase 3 (Multi-Repo)
-- [ ] Works with 3-5 repo groups
-- [ ] Cross-repo duplicate detection >80%
-- [ ] No performance degradation
-
-### Phase 4 (Production)
-- [ ] Test coverage >80%
-- [ ] Zero critical bugs in 1 week
-- [ ] Documentation complete
-- [ ] Ready for team rollout
+- **Dashboard**: View Speed, Ease, Quality metrics
+- **Search**: Find issues/PRs (keyword search for now)
+- **Roadmap**: See upcoming cycles and milestones
+- **Refresh**: Click sync icon to update data
 
 ---
 
-## 🔧 Technology Stack
+## 📁 Project Structure
 
-### Core Dependencies
-- **amplifier-core** - Amplifier kernel
-- **issue-manager** - Storage and CRUD (Paul's module)
-- **openai** - LLM and embeddings
-- **pyyaml** - Configuration
-- **numpy** - Vector operations
-- **sqlite3** - Embedding cache
-
-### Development Tools
-- **pytest** - Testing framework
-- **pytest-asyncio** - Async tests
-- **pytest-cov** - Coverage reporting
-- **black** - Code formatting
-- **ruff** - Linting
-- **mypy** - Type checking
-
----
-
-## 📈 Project Timeline
-
-### Week 1-2: Phase 1 MVP
-- Set up project structure
-- Implement core hooks
-- Basic LLM analysis
-- Integration with issue-manager
-- **Milestone**: Working duplicate detection
-
-### Week 3: Phase 2 Enhanced
-- Add embeddings
-- Build cache layer
-- Performance optimization
-- **Milestone**: <5s analysis time
-
-### Week 4: Phase 3 Multi-Repo
-- Project groups
-- Multi-repo querying
-- Enhanced tool operations
-- **Milestone**: Cross-repo coordination
-
-### Week 5: Phase 4 Polish
-- Error handling
-- Full test suite
-- Documentation
-- Release prep
-- **Milestone**: v1.0.0 release
-
-**Total**: 4-5 weeks for complete implementation
+```
+made-activity-tracker/
+├── src/                       # React frontend
+│   ├── pages/                 # Main app pages
+│   │   ├── Dashboard.tsx      # Metrics overview
+│   │   ├── Search.tsx         # Issue/PR search
+│   │   ├── Roadmap.tsx        # Cycles view
+│   │   ├── Settings.tsx       # Config management
+│   │   └── Login.tsx          # Auth flow
+│   ├── components/            # Reusable components
+│   ├── stores/                # Zustand state management
+│   └── lib/                   # Utilities
+│
+├── src-tauri/                 # Rust backend
+│   └── src/
+│       ├── github/            # Auth + sync
+│       ├── db/                # SQLite queries
+│       ├── metrics/           # Calculations
+│       ├── embeddings/        # FastEmbed integration
+│       ├── search/            # Search (Phase 3)
+│       └── config/            # App configuration
+│
+├── tests/                     # Test scaffolds
+└── PLAN.md                    # Full project plan
+```
 
 ---
 
-## 🎯 Key Decisions Made
+## 🔧 Configuration
 
-### ✅ Use issue-manager (Not Beads)
-- Native Amplifier module
-- Teammate collaboration
-- 60% effort reduction
-- Pure Python
+Config file location: `%APPDATA%\made-activity-tracker\config.json`
 
-### ✅ Two-Phase Analysis
-- Embeddings pre-filter (fast)
-- LLM reasoning (accurate)
-- Best of both worlds
-
-### ✅ Silent Notifications
-- Only high-confidence (>0.85)
-- Less intrusive
-- Better UX
-
-### ✅ Git-Based Sync
-- Simple, no infrastructure
-- Works with existing workflow
-- Can add real-time later if needed
-
----
-
-## 🤝 Collaboration
-
-### With Paul Payne
-- Using his issue-manager module
-- Can contribute enhancements
-- Coordinate on features
-
-### With Team
-- Share profiles and config
-- Collaborate via git
-- Multi-repo project groups
-
----
-
-## 📝 Next Steps
-
-### Immediate Actions
-1. **Review specifications** - Make sure design meets needs
-2. **Set up repository** - Create module structure
-3. **Start Task 1.1** - Module scaffold (2 hours)
-
-### First Week Goals
-- Complete Module 1 (hooks-activity-tracker scaffold)
-- Complete Module 2 (ActivityAnalyzer basic)
-- First integration test passing
-- Can detect duplicates with simple LLM
-
-### Questions to Resolve
-- [ ] LLM provider configuration details
-- [ ] OpenAI API key management
-- [ ] Repository location decisions
-- [ ] Team coordination approach
+```json
+{
+  "repositories": [
+    {
+      "owner": "facebook",
+      "name": "react",
+      "enabled": true
+    }
+  ],
+  "squads": [
+    {
+      "id": "frontend",
+      "name": "Frontend Squad",
+      "members": ["johndoe", "janedoe"],
+      "color": "#3b82f6"
+    }
+  ],
+  "excluded_bots": [
+    "dependabot[bot]",
+    "renovate[bot]"
+  ],
+  "excluded_labels": [
+    "duplicate",
+    "invalid"
+  ],
+  "bug_labels": [
+    "bug",
+    "defect"
+  ],
+  "history_days": 90
+}
+```
 
 ---
 
-## 📂 File Manifest
+## 📊 Metrics Explained
 
-**Planning Documents** (All in `C:\ANext\activity-tracker\`):
-- ✅ README.md (this file) - Project overview
-- ✅ SPECIFICATION_V2.md - Technical specification (use this)
-- ✅ SPECIFICATION.md - Original spec with Beads (archive)
-- ✅ TASKS.md - Implementation task list
-- ✅ TESTING_STRATEGY.md - Testing approach
-- ✅ PROJECT_STRUCTURE.md - Architecture reference
+### Speed (How fast work completes)
 
-**Git Repositories**:
-- ✅ amplifier/ - Cloned Amplifier repo (reference)
-- ✅ payne-amplifier/ - Paul's modules (reference)
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Avg Cycle Time | Business days from issue open → close | < 5 days |
+| Avg PR Lead Time | Business hours from PR open → merge | < 24 hours |
+| Throughput | Issues/PRs completed per week | Increasing |
 
----
+### Ease (How smooth the process is)
 
-## 🎓 Learning Resources
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Avg PR Size | Lines changed per PR | < 300 lines |
+| Avg Review Rounds | Review iterations per PR | < 2 rounds |
+| Rework Rate | PRs with extensive changes | < 20% |
 
-### Amplifier Architecture
-- `amplifier/docs/REPOSITORY_RULES.md` - Module boundaries
-- `amplifier/docs/MODULES.md` - Available modules
-- `amplifier/docs/MODULE_DEVELOPMENT.md` - How to build modules
+### Quality (How good the output is)
 
-### issue-manager Reference
-- `payne-amplifier/max_payne_collection/modules/issue-manager/` - Source code
-- `payne-amplifier/max_payne_collection/modules/tool-issue/` - Tool wrapper
-
-### Implementation Philosophy
-- @foundation:context/IMPLEMENTATION_PHILOSOPHY.md - Ruthless simplicity
-- @foundation:context/MODULAR_DESIGN_PHILOSOPHY.md - Bricks and studs
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Bug Rate | % of issues that are bugs | < 15% |
+| Reopen Rate | % of issues reopened | < 5% |
+| PR Rejection Rate | % of PRs closed without merge | < 10% |
 
 ---
 
-## 🚦 Status Board
+## 🧪 Testing
 
-### Planning
-- ✅ Requirements gathered
-- ✅ Architecture designed
-- ✅ Tasks broken down
-- ✅ Testing strategy defined
-- ✅ Documentation created
+```bash
+# Run Rust tests
+cd src-tauri
+cargo test
 
-### Implementation
-- ⬜ Phase 1: MVP (not started)
-- ⬜ Phase 2: Enhanced (not started)
-- ⬜ Phase 3: Multi-Repo (not started)
-- ⬜ Phase 4: Polish (not started)
+# Run frontend tests
+npm test
 
-### Ready to Begin! 🚀
+# Run E2E tests (Playwright)
+npm run test:e2e
 
----
-
-## 💡 Pro Tips
-
-### Development Workflow
-1. **Read SPECIFICATION_V2.md first** - Understand the design
-2. **Follow TASKS.md sequentially** - Dependencies matter
-3. **Write tests alongside code** - Don't defer testing
-4. **Use issue-manager for tracking** - Dogfood your own tool!
-
-### Common Pitfalls to Avoid
-- ❌ Don't skip error handling
-- ❌ Don't test implementation details
-- ❌ Don't over-engineer Phase 1
-- ❌ Don't ignore performance early
-- ✅ Keep it simple (ruthless simplicity!)
-
-### Getting Unstuck
-1. Check SPECIFICATION_V2.md for design details
-2. Review PROJECT_STRUCTURE.md for examples
-3. Look at issue-manager source code
-4. Ask Paul about issue-manager specifics
-5. Review Amplifier module examples
+# Run with coverage
+npm run test:coverage
+```
 
 ---
 
-## 📞 Support
+## 🚧 Known Issues & Limitations
 
-### Documentation
-- All specs and guides in this directory
-- Amplifier docs in `amplifier/docs/`
-- issue-manager in `payne-amplifier/`
+### Phase 1 Limitations
 
-### Code Examples
-- Look at existing Amplifier modules
-- Reference Paul's issue-manager
-- Check tool-issue for tool patterns
+1. **Search**: Only basic keyword search (no semantic/vector search yet)
+2. **Dashboard**: Placeholder charts, need real visualizations
+3. **Embeddings**: Generated but not stored in vector DB yet
+4. **Duplicate Detection**: Not implemented yet
+5. **User Filtering**: Squad/user-specific metrics not working yet
+
+### Workarounds
+
+- **Sync Takes Long**: First sync caches everything, subsequent syncs are incremental
+- **Model Download**: Happens automatically, but requires internet once
+- **Rate Limits**: GitHub allows 5,000 API calls/hour — should be enough for 25 repos
 
 ---
 
-**Last Updated**: 2025-11-20  
-**Next Milestone**: Phase 1 MVP Complete  
-**Estimated Completion**: 4-5 weeks from start
+## 🗺️ Roadmap
 
-**Let's build this! 🚀**
+### Phase 2 (Next)
+- LanceDB integration for vector storage
+- Hybrid search (keyword + semantic)
+- Duplicate detection with cosine similarity
+- Enhanced dashboard charts (Recharts)
+- User/squad filtering
+
+### Phase 3
+- Historical trends and snapshots
+- Export functionality (CSV, JSON)
+- Advanced roadmap visualizations
+- Customizable metrics definitions
+
+### Phase 4
+- Local REST API for AI tool integration
+- MCP (Model Context Protocol) server
+- Webhooks for real-time updates
+
+---
+
+## 📝 Development Notes
+
+### Adding a New Metric
+
+1. Add calculation logic to `src-tauri/src/metrics/calculator.rs`
+2. Add field to `DashboardMetrics` struct
+3. Update dashboard UI in `src/pages/Dashboard.tsx`
+4. Add test in `tests/rust/unit/metrics_test.rs`
+
+### Adding a New Label Type
+
+Update config in Settings UI or edit `config.json`:
+
+```json
+{
+  "custom_labels": {
+    "priority_high": ["urgent", "p1", "critical"],
+    "tech_debt": ["debt", "refactor", "cleanup"]
+  }
+}
+```
+
+---
+
+## 🤝 Contributing
+
+See `PLAN.md` for the full technical specification and architecture.
+
+---
+
+## 📄 License
+
+MIT
+
+---
+
+## 🆘 Troubleshooting
+
+### "Failed to initialize database"
+- Check file permissions in `%APPDATA%\made-activity-tracker`
+- Delete `tracker.db` to reset
+
+### "GitHub API rate limit exceeded"
+- Wait 1 hour for reset, or configure repos to sync less frequently
+- Check rate limit: https://github.com/settings/applications
+
+### "FastEmbed model not found"
+- Ensure internet connection for first download
+- Model cached at: `%LOCALAPPDATA%\fastembed`
+- Delete cache to re-download
+
+### "Sync hangs or fails"
+- Check GitHub token is valid: Settings → Login Status
+- Verify repo names are correct: `owner/repo`
+- Check app logs: `%APPDATA%\made-activity-tracker\logs`
+
+---
+
+## 📚 Resources
+
+- [Tauri Docs](https://tauri.app/)
+- [GitHub GraphQL API](https://docs.github.com/en/graphql)
+- [FastEmbed](https://github.com/Anush008/fastembed-rs)
+- [Project Plan](./PLAN.md)

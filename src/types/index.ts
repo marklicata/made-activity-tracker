@@ -1,0 +1,58 @@
+// Common type definitions
+
+export interface Repository {
+  owner: string;
+  name: string;
+  enabled: boolean;
+}
+
+export interface Squad {
+  id: string;
+  name: string;
+  members: string[];
+  color: string;
+}
+
+export interface Config {
+  repositories: Repository[];
+  squads: Squad[];
+  excluded_bots: string[];
+  excluded_labels: string[];
+  bug_labels: string[];
+  history_days: number;
+}
+
+export interface GitHubUser {
+  id: number;
+  login: string;
+  name: string | null;
+  avatar_url: string;
+}
+
+export interface SyncStats {
+  issues: number;
+  pull_requests: number;
+  users: number;
+  repositories: number;
+}
+
+export interface Metrics {
+  speed: {
+    avg_cycle_time_days: number;
+    avg_pr_lead_time_hours: number;
+    throughput_per_week: number;
+    trend: number;
+  };
+  ease: {
+    avg_pr_size_lines: number;
+    avg_review_rounds: number;
+    avg_time_to_first_review_hours: number;
+    rework_rate: number;
+  };
+  quality: {
+    bug_rate: number;
+    reopen_rate: number;
+    pr_rejection_rate: number;
+    test_coverage_trend: number;
+  };
+}

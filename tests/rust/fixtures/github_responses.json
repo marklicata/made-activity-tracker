@@ -1,0 +1,138 @@
+{
+  "issues_response": {
+    "repository": {
+      "issues": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": [
+          {
+            "id": "I_kwDOTest1",
+            "databaseId": 1,
+            "number": 42,
+            "title": "Add user authentication",
+            "body": "We need to implement OAuth2 authentication",
+            "state": "OPEN",
+            "createdAt": "2024-02-01T10:00:00Z",
+            "updatedAt": "2024-02-15T14:30:00Z",
+            "closedAt": null,
+            "author": {
+              "login": "johndoe"
+            },
+            "assignees": {
+              "nodes": [
+                {"login": "janedoe"}
+              ]
+            },
+            "labels": {
+              "nodes": [
+                {"name": "feature"},
+                {"name": "auth"}
+              ]
+            },
+            "milestone": {
+              "id": "M_kwDOTest1",
+              "databaseId": 1,
+              "title": "Cycle 1 - Foundation"
+            }
+          },
+          {
+            "id": "I_kwDOTest2",
+            "databaseId": 2,
+            "number": 43,
+            "title": "Fix login redirect bug",
+            "body": "Users are not redirected after login",
+            "state": "CLOSED",
+            "createdAt": "2024-02-05T09:00:00Z",
+            "updatedAt": "2024-02-10T11:00:00Z",
+            "closedAt": "2024-02-10T11:00:00Z",
+            "author": {
+              "login": "janedoe"
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "labels": {
+              "nodes": [
+                {"name": "bug"}
+              ]
+            },
+            "milestone": null
+          }
+        ]
+      }
+    }
+  },
+  "pull_requests_response": {
+    "repository": {
+      "pullRequests": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": [
+          {
+            "id": "PR_kwDOTest1",
+            "databaseId": 101,
+            "number": 50,
+            "title": "feat: Add OAuth authentication",
+            "body": "Implements OAuth2 flow for user authentication",
+            "state": "MERGED",
+            "createdAt": "2024-02-10T14:00:00Z",
+            "updatedAt": "2024-02-12T16:00:00Z",
+            "mergedAt": "2024-02-12T16:00:00Z",
+            "closedAt": "2024-02-12T16:00:00Z",
+            "additions": 250,
+            "deletions": 30,
+            "changedFiles": 8,
+            "author": {
+              "login": "johndoe"
+            },
+            "labels": {
+              "nodes": [
+                {"name": "feature"}
+              ]
+            },
+            "reviews": {
+              "nodes": [
+                {
+                  "id": "R_kwDOTest1",
+                  "databaseId": 1001,
+                  "state": "CHANGES_REQUESTED",
+                  "submittedAt": "2024-02-11T10:00:00Z",
+                  "author": {"login": "janedoe"}
+                },
+                {
+                  "id": "R_kwDOTest2",
+                  "databaseId": 1002,
+                  "state": "APPROVED",
+                  "submittedAt": "2024-02-12T14:00:00Z",
+                  "author": {"login": "janedoe"}
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "milestones_response": {
+    "repository": {
+      "milestones": {
+        "nodes": [
+          {
+            "id": "M_kwDOTest1",
+            "databaseId": 1,
+            "title": "Cycle 1 - Foundation",
+            "description": "Core infrastructure and authentication",
+            "state": "OPEN",
+            "dueOn": "2024-03-15T00:00:00Z",
+            "issues": {"totalCount": 10},
+            "closedIssues": {"totalCount": 6}
+          }
+        ]
+      }
+    }
+  }
+}

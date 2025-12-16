@@ -1,0 +1,44 @@
+[package]
+name = "made-activity-tracker"
+version = "0.1.0"
+description = "Metrics for Activity, Delivery & Efficiency - GitHub team activity tracker"
+authors = ["Your Team"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.75"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+# Tauri v1 (matches frontend @tauri-apps/api v1.5.3)
+tauri = { version = "1.5", features = [ "shell-open", "protocol-asset"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# GitHub API
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+oauth2 = "4.4"
+
+# Embeddings - use latest stable
+fastembed = { version = "4", default-features = false }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+keyring = "2"
+dirs = "5"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
