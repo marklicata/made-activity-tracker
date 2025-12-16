@@ -49,6 +49,7 @@ fn main() {
             config::commands::save_config,
             config::commands::get_sync_stats,
             config::commands::get_all_users,
+            config::commands::get_all_repositories,
 
             // Metrics commands
             metrics::commands::get_dashboard_metrics,

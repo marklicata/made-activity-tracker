@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { listen } from '@tauri-apps/api/event';
-import { 
-  TrendingUp, 
-  Clock, 
-  CheckCircle2, 
+import {
+  TrendingUp,
+  Clock,
+  CheckCircle2,
   AlertCircle,
   Users,
   GitPullRequest,
@@ -14,9 +14,14 @@ import {
   Database,
   Loader2,
   Settings,
+  X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import { DateRangeFilter, RepositoryFilter, SquadFilter, UserFilter } from '@components/filters';
+import { MetricsTrendChart } from '@components/charts';
+import { useDashboardFilterStore } from '@stores/dashboardFilterStore';
+import { TimeseriesDataPoint } from '@types/filters';
 
 interface Metrics {
   speed: {
@@ -103,19 +108,37 @@ function MetricCard({ title, value, subtitle, trend, icon: Icon, color }: Metric
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [stats, setStats] = useState<SyncStats | null>(null);
+  const [timeseriesData, setTimeseriesData] = useState<TimeseriesDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCharts, setLoadingCharts] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
+  const { filters, clearFilters, hasActiveFilters } = useDashboardFilterStore();
+
+  // Reload data when filters change
+  useEffect(() => {
+    if (!loading) {
+      const timer = setTimeout(() => {
+        loadData();
+        loadChartData();
+      }, 300); // Debounce filter changes
+
+      return () => clearTimeout(timer);
+    }
+  }, [filters]);
+
   useEffect(() => {
     loadData();
-    
+    loadChartData();
+
     // Listen for sync progress events
     const unlisten = listen<SyncProgress>('sync-progress', (event) => {
       setSyncProgress(event.payload);
       if (event.payload.phase === 'complete') {
         setSyncing(false);
-        loadData(); // Reload data after sync
+        loadData();
+        loadChartData();
       }
     });
 
@@ -130,16 +153,33 @@ export default function Dashboard() {
       // Load stats
       const statsData = await invoke<SyncStats>('get_sync_stats');
       setStats(statsData);
-      
+
       // Only load metrics if we have data
       if (statsData.issues > 0 || statsData.pull_requests > 0) {
-        const metricsData = await invoke<Metrics>('get_dashboard_metrics');
+        const metricsData = await invoke<Metrics>('get_dashboard_metrics_filtered', {
+          filters,
+        });
         setMetrics(metricsData);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChartData = async () => {
+    setLoadingCharts(true);
+    try {
+      const data = await invoke<TimeseriesDataPoint[]>('get_metrics_timeseries', {
+        filters,
+        granularity: 'weekly',
+      });
+      setTimeseriesData(data);
+    } catch (error) {
+      console.error('Failed to load chart data:', error);
+    } finally {
+      setLoadingCharts(false);
     }
   };
 
@@ -255,6 +295,29 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Filter Bar */}
+      {hasData && (
+        <div className="mb-8 p-4 bg-white border border-gray-200 rounded-xl">
+          <div className="flex items-center flex-wrap gap-3">
+            <DateRangeFilter />
+            <RepositoryFilter />
+            <SquadFilter />
+            <UserFilter />
+
+            {/* Clear Filters Button */}
+            {hasActiveFilters() && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <X size={16} />
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* No metrics yet - prompt to sync */}
       {!hasData && (
         <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-xl">
@@ -280,7 +343,7 @@ export default function Dashboard() {
               <Zap className="text-blue-500" size={20} />
               Speed
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <MetricCard
                 title="Avg Cycle Time"
                 value={`${metrics.speed.avg_cycle_time_days} days`}
@@ -304,6 +367,13 @@ export default function Dashboard() {
                 color="speed"
               />
             </div>
+            {!loadingCharts && timeseriesData.length > 0 && (
+              <MetricsTrendChart
+                data={timeseriesData}
+                metric="speed"
+                title="Speed Trends Over Time"
+              />
+            )}
           </section>
 
           {/* Ease Metrics */}
@@ -312,7 +382,7 @@ export default function Dashboard() {
               <Users className="text-green-500" size={20} />
               Ease
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <MetricCard
                 title="Avg PR Size"
                 value={`${metrics.ease.avg_pr_size_lines} lines`}
@@ -335,6 +405,13 @@ export default function Dashboard() {
                 color="ease"
               />
             </div>
+            {!loadingCharts && timeseriesData.length > 0 && (
+              <MetricsTrendChart
+                data={timeseriesData}
+                metric="ease"
+                title="Ease Trends Over Time"
+              />
+            )}
           </section>
 
           {/* Quality Metrics */}
@@ -343,7 +420,7 @@ export default function Dashboard() {
               <AlertCircle className="text-purple-500" size={20} />
               Quality
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <MetricCard
                 title="Bug Rate"
                 value={`${(metrics.quality.bug_rate * 100).toFixed(1)}%`}
@@ -366,6 +443,13 @@ export default function Dashboard() {
                 color="quality"
               />
             </div>
+            {!loadingCharts && timeseriesData.length > 0 && (
+              <MetricsTrendChart
+                data={timeseriesData}
+                metric="quality"
+                title="Quality Trends Over Time"
+              />
+            )}
           </section>
         </>
       )}

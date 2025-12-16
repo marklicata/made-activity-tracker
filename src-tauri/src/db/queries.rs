@@ -989,3 +989,26 @@ pub fn get_all_users(conn: &Connection) -> Result<Vec<User>> {
 
     Ok(users)
 }
+
+/// Get all repositories for filtering
+pub fn get_all_repositories(conn: &Connection) -> Result<Vec<Repository>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, owner, name, github_id, enabled, last_synced_at
+         FROM repositories
+         ORDER BY owner ASC, name ASC"
+    )?;
+
+    let repos = stmt.query_map([], |row| {
+        Ok(Repository {
+            id: row.get(0)?,
+            owner: row.get(1)?,
+            name: row.get(2)?,
+            github_id: row.get(3)?,
+            enabled: row.get(4)?,
+            last_synced_at: row.get(5)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(repos)
+}

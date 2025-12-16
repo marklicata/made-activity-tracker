@@ -63,3 +63,12 @@ pub async fn get_all_users(
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
     crate::db::queries::get_all_users(&conn).map_err(|e| e.to_string())
 }
+
+/// Get all repositories for filtering
+#[tauri::command]
+pub async fn get_all_repositories(
+    state: tauri::State<'_, crate::db::AppState>
+) -> Result<Vec<crate::db::models::Repository>, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+    crate::db::queries::get_all_repositories(&conn).map_err(|e| e.to_string())
+}
