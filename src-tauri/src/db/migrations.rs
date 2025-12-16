@@ -4,7 +4,46 @@ use rusqlite::Connection;
 /// Run all database migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
+
+    // Run migrations for existing databases
+    migrate_add_embedding_columns(conn)?;
+
     tracing::info!("Database migrations completed");
+    Ok(())
+}
+
+/// Add embedding columns to existing databases (Phase 2A migration)
+fn migrate_add_embedding_columns(conn: &Connection) -> Result<()> {
+    // Check if issues table has embedding column
+    let has_issue_embedding: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('issues') WHERE name='embedding'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !has_issue_embedding {
+        tracing::info!("Adding embedding column to issues table...");
+        conn.execute("ALTER TABLE issues ADD COLUMN embedding BLOB", [])?;
+    }
+
+    // Check if pull_requests table has embedding column
+    let has_pr_embedding: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('pull_requests') WHERE name='embedding'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !has_pr_embedding {
+        tracing::info!("Adding embedding column to pull_requests table...");
+        conn.execute("ALTER TABLE pull_requests ADD COLUMN embedding BLOB", [])?;
+    }
+
     Ok(())
 }
 
