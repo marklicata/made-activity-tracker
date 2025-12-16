@@ -1,9 +1,19 @@
 use anyhow::{anyhow, Result};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 
 const SERVICE_NAME: &str = "made-activity-tracker";
 const ACCOUNT_NAME: &str = "github-token";
+
+/// Get the path to the token file (fallback when keyring unavailable)
+fn get_token_file_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+    let token_dir = home.join(".config").join("made-activity-tracker");
+    fs::create_dir_all(&token_dir)?;
+    Ok(token_dir.join(".token"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubUser {
@@ -24,31 +34,74 @@ const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const USER_API_URL: &str = "https://api.github.com/user";
 
-/// Store the access token securely in the system keychain
+/// Store the access token securely in the system keychain (or file fallback)
 pub fn store_token(token: &str) -> Result<()> {
-    let entry = Entry::new(SERVICE_NAME, ACCOUNT_NAME)?;
-    entry.set_password(token)?;
+    // Try keyring first
+    match Entry::new(SERVICE_NAME, ACCOUNT_NAME) {
+        Ok(entry) => {
+            if entry.set_password(token).is_ok() {
+                return Ok(());
+            }
+        }
+        Err(_) => {}
+    }
+
+    // Fallback to file storage (for WSL and systems without keyring)
+    let token_path = get_token_file_path()?;
+    fs::write(&token_path, token)?;
+
+    // Set restrictive permissions (Unix only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&token_path)?.permissions();
+        perms.set_mode(0o600); // Read/write for owner only
+        fs::set_permissions(&token_path, perms)?;
+    }
+
     Ok(())
 }
 
-/// Retrieve the access token from the system keychain
+/// Retrieve the access token from the system keychain (or file fallback)
 pub fn get_token() -> Result<Option<String>> {
-    let entry = Entry::new(SERVICE_NAME, ACCOUNT_NAME)?;
-    match entry.get_password() {
+    // Try keyring first
+    match Entry::new(SERVICE_NAME, ACCOUNT_NAME) {
+        Ok(entry) => match entry.get_password() {
+            Ok(token) => return Ok(Some(token)),
+            Err(keyring::Error::NoEntry) => {
+                // No token in keyring, try file fallback
+            }
+            Err(_) => {
+                // Keyring unavailable, try file fallback
+            }
+        },
+        Err(_) => {
+            // Keyring unavailable, try file fallback
+        }
+    }
+
+    // Fallback to file storage
+    let token_path = get_token_file_path()?;
+    match fs::read_to_string(&token_path) {
         Ok(token) => Ok(Some(token)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(anyhow!("Failed to get token: {}", e)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(anyhow!("Failed to read token file: {}", e)),
     }
 }
 
-/// Delete the access token from the system keychain
+/// Delete the access token from the system keychain (and file fallback)
 pub fn delete_token() -> Result<()> {
-    let entry = Entry::new(SERVICE_NAME, ACCOUNT_NAME)?;
-    match entry.delete_password() { // Fixed: Changed from delete_credential() to delete_password()
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(anyhow!("Failed to delete token: {}", e)),
+    // Try deleting from keyring
+    if let Ok(entry) = Entry::new(SERVICE_NAME, ACCOUNT_NAME) {
+        let _ = entry.delete_password(); // Ignore errors, continue to file cleanup
     }
+
+    // Also delete from file storage
+    if let Ok(token_path) = get_token_file_path() {
+        let _ = fs::remove_file(&token_path); // Ignore errors if file doesn't exist
+    }
+
+    Ok(())
 }
 
 /// Initiate GitHub Device Flow authentication

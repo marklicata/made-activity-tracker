@@ -9,18 +9,10 @@ const GITHUB_CLIENT_ID: &str = "Ov23liO78BuaPSWYJI0w";
 /// Initiate GitHub Device Flow login
 #[tauri::command]
 pub async fn github_login(app: AppHandle) -> Result<AuthResult, String> {
-    eprintln!("[AUTH] Starting GitHub Device Flow...");
-
     // Start device flow
-    eprintln!("[AUTH] Initiating device flow with GitHub...");
     let device_response = auth::initiate_device_flow(GITHUB_CLIENT_ID)
         .await
-        .map_err(|e| {
-            eprintln!("[AUTH ERROR] Device flow initiation failed: {}", e);
-            format!("Failed to start device flow: {}", e)
-        })?;
-
-    eprintln!("[AUTH] Device code received: {}", device_response.user_code);
+        .map_err(|e| format!("Failed to start device flow: {}", e))?;
 
     // Open browser for user to authorize
     let verification_url = format!(
@@ -28,53 +20,31 @@ pub async fn github_login(app: AppHandle) -> Result<AuthResult, String> {
         device_response.verification_uri, device_response.user_code
     );
 
-    eprintln!("[AUTH] Opening browser: {}", verification_url);
-    if let Err(e) = tauri::api::shell::open(&app.shell_scope(), &verification_url, None) {
-        eprintln!("[AUTH WARNING] Failed to open browser automatically: {}. User must manually visit the URL.", e);
-        // Don't fail here - user can manually open the URL
-    }
+    // Try to open browser (fail silently - user can use the UI link)
+    let _ = tauri::api::shell::open(&app.shell_scope(), &verification_url, None);
 
     // Emit event with user code for display
-    eprintln!("[AUTH] Emitting device code to frontend...");
     app.emit_all("device-code", &device_response.user_code)
-        .map_err(|e| {
-            eprintln!("[AUTH ERROR] Failed to emit device code: {}", e);
-            e.to_string()
-        })?;
+        .map_err(|e| e.to_string())?;
 
     // Poll for token
-    eprintln!("[AUTH] Waiting for user authorization (this may take a minute)...");
     let access_token = auth::poll_for_token(
         GITHUB_CLIENT_ID,
         &device_response.device_code,
         device_response.interval as u64,
     )
     .await
-    .map_err(|e| {
-        eprintln!("[AUTH ERROR] Token polling failed: {}", e);
-        format!("Failed to get access token: {}", e)
-    })?;
-
-    eprintln!("[AUTH] Access token received, fetching user info...");
+    .map_err(|e| format!("Authorization failed: {}", e))?;
 
     // Get user info
     let user = auth::get_authenticated_user(&access_token)
         .await
-        .map_err(|e| {
-            eprintln!("[AUTH ERROR] Failed to fetch user info: {}", e);
-            format!("Failed to get user info: {}", e)
-        })?;
-
-    eprintln!("[AUTH] User authenticated: {}", user.login);
+        .map_err(|e| format!("Failed to get user info: {}", e))?;
 
     // Store token securely
-    eprintln!("[AUTH] Storing token in keyring...");
-    auth::store_token(&access_token).map_err(|e| {
-        eprintln!("[AUTH ERROR] Failed to store token: {}", e);
-        format!("Failed to save credentials: {}", e)
-    })?;
+    auth::store_token(&access_token)
+        .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
-    eprintln!("[AUTH] Login successful!");
     Ok(AuthResult { user, access_token })
 }
 
@@ -87,34 +57,21 @@ pub async fn github_logout() -> Result<(), String> {
 /// Check if user is already authenticated
 #[tauri::command]
 pub async fn check_auth() -> Result<Option<AuthResult>, String> {
-    eprintln!("[AUTH] Checking for existing authentication...");
-
-    let token = auth::get_token().map_err(|e| {
-        eprintln!("[AUTH ERROR] Failed to check keyring: {}", e);
-        e.to_string()
-    })?;
+    let token = auth::get_token().map_err(|e| e.to_string())?;
 
     match token {
         Some(access_token) => {
-            eprintln!("[AUTH] Found stored token, verifying validity...");
             // Verify token is still valid by fetching user
             match auth::get_authenticated_user(&access_token).await {
-                Ok(user) => {
-                    eprintln!("[AUTH] Token valid, user: {}", user.login);
-                    Ok(Some(AuthResult { user, access_token }))
-                }
-                Err(e) => {
-                    eprintln!("[AUTH] Token invalid or expired: {}. Cleaning up...", e);
+                Ok(user) => Ok(Some(AuthResult { user, access_token })),
+                Err(_) => {
                     // Token invalid, clean up
                     auth::delete_token().ok();
                     Ok(None)
                 }
             }
         }
-        None => {
-            eprintln!("[AUTH] No stored token found");
-            Ok(None)
-        }
+        None => Ok(None),
     }
 }
 

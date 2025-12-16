@@ -25,6 +25,9 @@ logs/
 .env.local
 .env.*.local
 
+# Token storage (fallback for WSL)
+.config/made-activity-tracker/.token
+
 # IDE
 .vscode/
 .idea/
