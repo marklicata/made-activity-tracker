@@ -50,5 +50,8 @@ coverage/
 src-tauri/target/
 src-tauri/WixTools/
 
+# FastEmbed model cache
+src-tauri/.fastembed_cache/
+
 # Claude Code
 .claude/
