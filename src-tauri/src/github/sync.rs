@@ -65,7 +65,14 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
     }
 
     // Phase 2B: Generate embeddings for new items
-    generate_embeddings_for_new_items(app, state).await?;
+    tracing::info!("Starting embedding generation phase...");
+    match generate_embeddings_for_new_items(app, state).await {
+        Ok(()) => tracing::info!("Embedding generation completed successfully"),
+        Err(e) => {
+            tracing::error!("Embedding generation failed: {}", e);
+            // Don't fail the whole sync, just log the error
+        }
+    }
 
     emit_progress(app, "complete", total_repos, total_repos, "Sync complete!");
 
@@ -77,13 +84,16 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
 async fn generate_embeddings_for_new_items(app: &AppHandle, state: &AppState) -> Result<()> {
     const BATCH_SIZE: i64 = 50;
 
+    tracing::debug!("Entered generate_embeddings_for_new_items function");
     emit_progress(app, "embeddings", 0, 0, "Checking for items without embeddings...");
 
     // Get issues without embeddings
+    tracing::debug!("Querying for issues without embeddings...");
     let issues_to_process = {
         let conn = state.sqlite.lock().unwrap();
         queries::get_issues_without_embeddings(&conn, BATCH_SIZE)?
     };
+    tracing::debug!("Found {} issues without embeddings", issues_to_process.len());
 
     // Get PRs without embeddings
     let prs_to_process = {

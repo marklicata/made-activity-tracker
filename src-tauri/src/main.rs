@@ -22,6 +22,9 @@ fn main() {
         )
         .init();
 
+    // Log version info at startup
+    tracing::info!("Made Activity Tracker v{} starting...", env!("CARGO_PKG_VERSION"));
+
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
