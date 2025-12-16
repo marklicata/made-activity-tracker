@@ -2,37 +2,61 @@ use super::generate_embeddings;
 use crate::db::models::{Issue, PullRequest};
 use anyhow::Result;
 
+/// Prepare text for embedding from title and body
+pub fn prepare_issue_text(title: &str, body: &Option<String>) -> String {
+    let mut parts = vec![title.to_string()];
+
+    if let Some(b) = body {
+        let truncated = truncate_text(b, 1000);
+        parts.push(truncated);
+    }
+
+    parts.join("\n\n")
+}
+
 /// Prepare text for embedding from an issue
 pub fn issue_to_embedding_text(issue: &Issue) -> String {
     let mut parts = vec![issue.title.clone()];
-    
+
     if let Some(body) = &issue.body {
         // Truncate body to avoid very long texts
         let truncated = truncate_text(body, 1000);
         parts.push(truncated);
     }
-    
+
     // Add labels as context
     if !issue.labels.is_empty() {
         parts.push(format!("Labels: {}", issue.labels.join(", ")));
     }
-    
+
+    parts.join("\n\n")
+}
+
+/// Prepare text for embedding from PR title and body
+pub fn prepare_pr_text(title: &str, body: &Option<String>) -> String {
+    let mut parts = vec![title.to_string()];
+
+    if let Some(b) = body {
+        let truncated = truncate_text(b, 1000);
+        parts.push(truncated);
+    }
+
     parts.join("\n\n")
 }
 
 /// Prepare text for embedding from a PR
 pub fn pr_to_embedding_text(pr: &PullRequest) -> String {
     let mut parts = vec![pr.title.clone()];
-    
+
     if let Some(body) = &pr.body {
         let truncated = truncate_text(body, 1000);
         parts.push(truncated);
     }
-    
+
     if !pr.labels.is_empty() {
         parts.push(format!("Labels: {}", pr.labels.join(", ")));
     }
-    
+
     parts.join("\n\n")
 }
 

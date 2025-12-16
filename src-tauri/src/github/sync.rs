@@ -1,7 +1,8 @@
 use crate::db::queries::{self, is_bot_user};
 use crate::db::AppState;
 use crate::github::graphql::{self, *};
-use anyhow::Result;
+use crate::embeddings::{generate_embeddings, generator};
+use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use tauri::{AppHandle, Manager};
 
@@ -63,12 +64,100 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
         }
     }
 
-    // Phase 3 will add: Generate embeddings for new items
-    // emit_progress(app, "embeddings", 0, 0, "Generating embeddings for new items...");
+    // Phase 2B: Generate embeddings for new items
+    generate_embeddings_for_new_items(app, state).await?;
 
     emit_progress(app, "complete", total_repos, total_repos, "Sync complete!");
-    
+
     tracing::info!("Sync completed successfully");
+    Ok(())
+}
+
+/// Generate embeddings for issues and PRs that don't have them yet
+async fn generate_embeddings_for_new_items(app: &AppHandle, state: &AppState) -> Result<()> {
+    const BATCH_SIZE: i64 = 50;
+
+    emit_progress(app, "embeddings", 0, 0, "Checking for items without embeddings...");
+
+    // Get issues without embeddings
+    let issues_to_process = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::get_issues_without_embeddings(&conn, BATCH_SIZE)?
+    };
+
+    // Get PRs without embeddings
+    let prs_to_process = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::get_prs_without_embeddings(&conn, BATCH_SIZE)?
+    };
+
+    let total_items = issues_to_process.len() + prs_to_process.len();
+
+    if total_items == 0 {
+        tracing::info!("No items need embeddings");
+        return Ok(());
+    }
+
+    tracing::info!("Generating embeddings for {} items", total_items);
+    emit_progress(app, "embeddings", 0, total_items, &format!("Generating embeddings for {} items...", total_items));
+
+    let mut processed = 0;
+
+    // Process issues
+    for issue in issues_to_process {
+        let text = generator::prepare_issue_text(&issue.title, &issue.body);
+
+        match generate_embeddings(&[text]) {
+            Ok(embeddings) => {
+                if let Some(embedding) = embeddings.first() {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::set_issue_embedding(&conn, issue.id, embedding)
+                        .context("Failed to store issue embedding")?;
+                    processed += 1;
+
+                    if processed % 10 == 0 {
+                        emit_progress(app, "embeddings", processed, total_items, &format!("Generated {}/{} embeddings...", processed, total_items));
+                    }
+                } else {
+                    tracing::warn!("No embedding generated for issue {}", issue.id);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to generate embedding for issue {}: {}", issue.id, e);
+                // Continue processing other items
+            }
+        }
+    }
+
+    // Process PRs
+    for pr in prs_to_process {
+        let text = generator::prepare_pr_text(&pr.title, &pr.body);
+
+        match generate_embeddings(&[text]) {
+            Ok(embeddings) => {
+                if let Some(embedding) = embeddings.first() {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::set_pr_embedding(&conn, pr.id, embedding)
+                        .context("Failed to store PR embedding")?;
+                    processed += 1;
+
+                    if processed % 10 == 0 {
+                        emit_progress(app, "embeddings", processed, total_items, &format!("Generated {}/{} embeddings...", processed, total_items));
+                    }
+                } else {
+                    tracing::warn!("No embedding generated for PR {}", pr.id);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to generate embedding for PR {}: {}", pr.id, e);
+                // Continue processing other items
+            }
+        }
+    }
+
+    tracing::info!("Successfully generated {} embeddings", processed);
+    emit_progress(app, "embeddings", processed, total_items, &format!("Generated {} embeddings", processed));
+
     Ok(())
 }
 

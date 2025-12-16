@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod duplicates;
 pub mod hybrid;
+pub mod vector_store;
 
-// Phase 1: Search is stubbed out
-// Phase 3 will add LanceDB for vector search
+// Phase 2B: Vector store module uses SQLite BLOB storage
+// Hybrid search and duplicate detection implemented
