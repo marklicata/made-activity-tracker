@@ -1,5 +1,5 @@
 use super::calculator::{calculate_dashboard_metrics, DashboardMetrics};
-use super::filter_params::{MetricsFilters, DateRange};
+use super::filter_params::MetricsFilters;
 use crate::db::AppState;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};

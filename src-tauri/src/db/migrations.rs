@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS issues (
     updated_at TEXT NOT NULL,
     closed_at TEXT,
     labels TEXT, -- JSON array of label names
-    embedding_id TEXT, -- Reference to LanceDB vector
+    embedding BLOB, -- 384-dimensional float32 vector (1536 bytes)
     UNIQUE(repo_id, number)
 );
 
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS pull_requests (
     changed_files INTEGER DEFAULT 0,
     review_comments INTEGER DEFAULT 0,
     labels TEXT, -- JSON array of label names
-    embedding_id TEXT, -- Reference to LanceDB vector
+    embedding BLOB, -- 384-dimensional float32 vector (1536 bytes)
     UNIQUE(repo_id, number)
 );
 

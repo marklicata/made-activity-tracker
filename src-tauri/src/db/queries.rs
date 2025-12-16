@@ -200,19 +200,19 @@ pub fn get_issues_for_metrics(
     let query = "
         SELECT i.id, i.github_id, i.repo_id, i.number, i.title, i.body, i.state,
                i.author_id, i.assignee_id, i.milestone_id, i.created_at, i.updated_at,
-               i.closed_at, i.labels, i.embedding_id, u.login
+               i.closed_at, i.labels, u.login
         FROM issues i
         LEFT JOIN users u ON i.author_id = u.id
         WHERE i.created_at >= ?1
     ";
-    
+
     let mut stmt = conn.prepare(query)?;
-    
+
     let issues = stmt.query_map(params![since], |row| {
         let labels_json: String = row.get(13)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        let author_login: Option<String> = row.get(15)?;
-        
+        let author_login: Option<String> = row.get(14)?;
+
         Ok((Issue {
             id: row.get(0)?,
             github_id: row.get(1)?,
@@ -228,7 +228,6 @@ pub fn get_issues_for_metrics(
             updated_at: row.get(11)?,
             closed_at: row.get(12)?,
             labels,
-            embedding_id: row.get(14)?,
         }, author_login))
     })?
     .filter_map(|result| {
@@ -254,16 +253,16 @@ pub fn get_issues_for_metrics(
 pub fn get_issues_without_embeddings(conn: &Connection, limit: i64) -> Result<Vec<Issue>> {
     let mut stmt = conn.prepare(
         "SELECT id, github_id, repo_id, number, title, body, state, author_id,
-                assignee_id, milestone_id, created_at, updated_at, closed_at, labels, embedding_id
+                assignee_id, milestone_id, created_at, updated_at, closed_at, labels
          FROM issues
-         WHERE embedding_id IS NULL
+         WHERE embedding IS NULL
          LIMIT ?1"
     )?;
-    
+
     let issues = stmt.query_map(params![limit], |row| {
         let labels_json: String = row.get(13)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        
+
         Ok(Issue {
             id: row.get(0)?,
             github_id: row.get(1)?,
@@ -279,21 +278,44 @@ pub fn get_issues_without_embeddings(conn: &Connection, limit: i64) -> Result<Ve
             updated_at: row.get(11)?,
             closed_at: row.get(12)?,
             labels,
-            embedding_id: row.get(14)?,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
-    
+
     Ok(issues)
 }
 
-/// Update issue with embedding ID
-pub fn set_issue_embedding_id(conn: &Connection, issue_id: i64, embedding_id: &str) -> Result<()> {
+/// Store embedding vector for an issue
+pub fn set_issue_embedding(conn: &Connection, issue_id: i64, embedding: &[f32]) -> Result<()> {
+    // Convert f32 vector to bytes
+    let bytes: Vec<u8> = embedding
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
+
     conn.execute(
-        "UPDATE issues SET embedding_id = ?1 WHERE id = ?2",
-        params![embedding_id, issue_id],
+        "UPDATE issues SET embedding = ?1 WHERE id = ?2",
+        params![bytes, issue_id],
     )?;
     Ok(())
+}
+
+/// Get embedding vector for an issue
+pub fn get_issue_embedding(conn: &Connection, issue_id: i64) -> Result<Option<Vec<f32>>> {
+    let embedding_bytes: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT embedding FROM issues WHERE id = ?1",
+            params![issue_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(embedding_bytes.map(|bytes| {
+        bytes
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect()
+    }))
 }
 
 // ============================================================================
@@ -360,20 +382,20 @@ pub fn get_prs_for_metrics(
     let query = "
         SELECT p.id, p.github_id, p.repo_id, p.number, p.title, p.body, p.state,
                p.author_id, p.created_at, p.updated_at, p.merged_at, p.closed_at,
-               p.additions, p.deletions, p.changed_files, p.review_comments, 
-               p.labels, p.embedding_id, u.login
+               p.additions, p.deletions, p.changed_files, p.review_comments,
+               p.labels, u.login
         FROM pull_requests p
         LEFT JOIN users u ON p.author_id = u.id
         WHERE p.created_at >= ?1
     ";
-    
+
     let mut stmt = conn.prepare(query)?;
-    
+
     let prs = stmt.query_map(params![since], |row| {
         let labels_json: String = row.get(16)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        let author_login: Option<String> = row.get(18)?;
-        
+        let author_login: Option<String> = row.get(17)?;
+
         Ok((PullRequest {
             id: row.get(0)?,
             github_id: row.get(1)?,
@@ -392,7 +414,6 @@ pub fn get_prs_for_metrics(
             changed_files: row.get(14)?,
             review_comments: row.get(15)?,
             labels,
-            embedding_id: row.get(17)?,
         }, author_login))
     })?
     .filter_map(|result| {
@@ -418,16 +439,16 @@ pub fn get_prs_without_embeddings(conn: &Connection, limit: i64) -> Result<Vec<P
     let mut stmt = conn.prepare(
         "SELECT id, github_id, repo_id, number, title, body, state, author_id,
                 created_at, updated_at, merged_at, closed_at, additions, deletions,
-                changed_files, review_comments, labels, embedding_id
+                changed_files, review_comments, labels
          FROM pull_requests
-         WHERE embedding_id IS NULL
+         WHERE embedding IS NULL
          LIMIT ?1"
     )?;
-    
+
     let prs = stmt.query_map(params![limit], |row| {
         let labels_json: String = row.get(16)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        
+
         Ok(PullRequest {
             id: row.get(0)?,
             github_id: row.get(1)?,
@@ -446,21 +467,44 @@ pub fn get_prs_without_embeddings(conn: &Connection, limit: i64) -> Result<Vec<P
             changed_files: row.get(14)?,
             review_comments: row.get(15)?,
             labels,
-            embedding_id: row.get(17)?,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
-    
+
     Ok(prs)
 }
 
-/// Update PR with embedding ID
-pub fn set_pr_embedding_id(conn: &Connection, pr_id: i64, embedding_id: &str) -> Result<()> {
+/// Store embedding vector for a PR
+pub fn set_pr_embedding(conn: &Connection, pr_id: i64, embedding: &[f32]) -> Result<()> {
+    // Convert f32 vector to bytes
+    let bytes: Vec<u8> = embedding
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
+
     conn.execute(
-        "UPDATE pull_requests SET embedding_id = ?1 WHERE id = ?2",
-        params![embedding_id, pr_id],
+        "UPDATE pull_requests SET embedding = ?1 WHERE id = ?2",
+        params![bytes, pr_id],
     )?;
     Ok(())
+}
+
+/// Get embedding vector for a PR
+pub fn get_pr_embedding(conn: &Connection, pr_id: i64) -> Result<Option<Vec<f32>>> {
+    let embedding_bytes: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT embedding FROM pull_requests WHERE id = ?1",
+            params![pr_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(embedding_bytes.map(|bytes| {
+        bytes
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect()
+    }))
 }
 
 // ============================================================================
@@ -737,7 +781,7 @@ pub fn get_issues_for_metrics_filtered(
     let mut query = String::from(
         "SELECT i.id, i.github_id, i.repo_id, i.number, i.title, i.body, i.state,
                 i.author_id, i.assignee_id, i.milestone_id, i.created_at, i.updated_at,
-                i.closed_at, i.labels, i.embedding_id, u.login
+                i.closed_at, i.labels, u.login
          FROM issues i
          LEFT JOIN users u ON i.author_id = u.id
          WHERE i.created_at >= ?1"
@@ -797,7 +841,7 @@ pub fn get_issues_for_metrics_filtered(
     let issues = stmt.query_map(param_refs.as_slice(), |row| {
         let labels_json: String = row.get(13)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        let author_login: Option<String> = row.get(15)?;
+        let author_login: Option<String> = row.get(14)?;
 
         Ok((Issue {
             id: row.get(0)?,
@@ -814,7 +858,6 @@ pub fn get_issues_for_metrics_filtered(
             updated_at: row.get(11)?,
             closed_at: row.get(12)?,
             labels,
-            embedding_id: row.get(14)?,
         }, author_login))
     })?
     .filter_map(|result| {
@@ -849,7 +892,7 @@ pub fn get_prs_for_metrics_filtered(
         "SELECT p.id, p.github_id, p.repo_id, p.number, p.title, p.body, p.state,
                 p.author_id, p.created_at, p.updated_at, p.merged_at, p.closed_at,
                 p.additions, p.deletions, p.changed_files, p.review_comments,
-                p.labels, p.embedding_id, u.login
+                p.labels, u.login
          FROM pull_requests p
          LEFT JOIN users u ON p.author_id = u.id
          WHERE p.created_at >= ?1"
@@ -909,7 +952,7 @@ pub fn get_prs_for_metrics_filtered(
     let prs = stmt.query_map(param_refs.as_slice(), |row| {
         let labels_json: String = row.get(16)?;
         let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
-        let author_login: Option<String> = row.get(18)?;
+        let author_login: Option<String> = row.get(17)?;
 
         Ok((PullRequest {
             id: row.get(0)?,
@@ -929,7 +972,6 @@ pub fn get_prs_for_metrics_filtered(
             changed_files: row.get(14)?,
             review_comments: row.get(15)?,
             labels,
-            embedding_id: row.get(17)?,
         }, author_login))
     })?
     .filter_map(|result| {

@@ -36,7 +36,7 @@ pub struct Issue {
     pub updated_at: String,
     pub closed_at: Option<String>,
     pub labels: Vec<String>,
-    pub embedding_id: Option<String>,
+    // Note: embedding BLOB is stored in DB but not loaded in this model for performance
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +58,7 @@ pub struct PullRequest {
     pub changed_files: i32,
     pub review_comments: i32,
     pub labels: Vec<String>,
-    pub embedding_id: Option<String>,
+    // Note: embedding BLOB is stored in DB but not loaded in this model for performance
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
