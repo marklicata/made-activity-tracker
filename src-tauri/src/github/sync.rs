@@ -152,7 +152,7 @@ async fn sync_issues(
             // Get milestone ID
             let milestone_id = if let Some(milestone) = &issue_node.milestone {
                 let conn = state.sqlite.lock().unwrap();
-                queries::get_milestone_id_by_github_id(&conn, milestone.database_id)?
+                queries::get_milestone_id_by_github_id(&conn, milestone.number as i64)?
             } else {
                 None
             };
@@ -343,7 +343,7 @@ async fn sync_milestones(
         let conn = state.sqlite.lock().unwrap();
         queries::upsert_milestone(
             &conn,
-            milestone.database_id,
+            milestone.number as i64,
             repo_id,
             &milestone.title,
             milestone.description.as_deref(),
