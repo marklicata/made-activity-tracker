@@ -136,28 +136,37 @@ settings:
 
 ## Development Phases
 
-### Phase 1: Foundation (Current)
+### Phase 1: Foundation ✅ **COMPLETE**
 - [x] Project scaffold (Tauri + React)
 - [x] SQLite schema & migrations
-- [x] LanceDB setup
-- [ ] GitHub OAuth Device Flow
-- [ ] GraphQL sync engine
-- [ ] FastEmbed-rs integration
-- [ ] Config management
-- [ ] Basic React shell
+- [x] GitHub OAuth Device Flow
+- [x] GraphQL sync engine
+- [x] FastEmbed-rs integration
+- [x] Config management
+- [x] Basic React shell
+- [x] Settings UI
+- [x] Metrics calculation engine
 
-### Phase 2: Dashboard
-- [ ] Metrics calculation engine
-- [ ] Speed/Ease/Quality cards
-- [ ] Date range filtering
-- [ ] Repository filtering
-- [ ] Trend indicators
+### Phase 2: Dashboard ✅ **COMPLETE**
+- [x] Metrics calculation engine
+- [x] Speed/Ease/Quality cards
+- [x] Date range filtering (7/30/90/180/365 days)
+- [x] Repository multi-select filtering
+- [x] Squad filtering
+- [x] User filtering
+- [x] Filter persistence
+- [x] Recharts visualizations
+- [x] Real-time chart updates
+- [x] Comprehensive test coverage
 
-### Phase 3: Intelligence
+### Phase 3: Intelligence (Next)
+- [ ] LanceDB integration for vector storage
 - [ ] Hybrid search (keyword + semantic)
 - [ ] Duplicate detection
 - [ ] Roadmap view (cycles/milestones)
 - [ ] Duplicate warnings on new issues
+- [ ] Historical trend calculations
+- [ ] Export functionality (CSV, JSON)
 
 ### Phase 4: Team Features
 - [ ] Squad management
@@ -274,9 +283,16 @@ made-activity-tracker/
 
 ---
 
+## Current Status
+
+**Phase 1**: ✅ Complete
+**Phase 2**: ✅ Complete
+**Phase 3**: 🚧 In Planning
+
 ## Next Steps
 
-1. **Complete Phase 1** - Wire up all the scaffolded code
-2. **Create GitHub OAuth App** - Get client ID for auth
-3. **Test sync pipeline** - End-to-end with real repos
+1. **LanceDB Integration** - Store embeddings in vector database
+2. **Hybrid Search** - Combine keyword (SQLite FTS5) + semantic (LanceDB)
+3. **Duplicate Detection** - Cosine similarity on embeddings
+4. **Historical Trends** - Fetch 2x data period for period-over-period comparison
 4. **Build out dashboard** - Connect metrics to UI

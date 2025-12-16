@@ -6,9 +6,9 @@ A desktop app for tracking GitHub team activity across multiple repositories wit
 
 ---
 
-## 🚀 Project Status: Phase 1 Complete
+## 🚀 Project Status: Phase 2 Complete
 
-✅ **What's Working:**
+✅ **Phase 1 (Core Infrastructure):**
 - ✅ GitHub OAuth Device Flow authentication
 - ✅ SQLite database with full schema
 - ✅ GitHub GraphQL sync (issues, PRs, milestones, reviews)
@@ -18,11 +18,20 @@ A desktop app for tracking GitHub team activity across multiple repositories wit
 - ✅ Settings UI for repo/squad configuration
 - ✅ React frontend scaffold with routing
 
-⏳ **Not Yet Implemented:**
+✅ **Phase 2 (Dashboard Filters & Charts - NEW!):**
+- ✅ Date range filtering with presets (7/30/90/180/365 days)
+- ✅ Repository multi-select filtering
+- ✅ Squad filtering with color indicators
+- ✅ User filtering with search
+- ✅ Filter persistence (localStorage)
+- ✅ Recharts visualizations for all metrics
+- ✅ Real-time chart updates on filter changes
+- ✅ Comprehensive test coverage (Rust + Frontend + E2E)
+
+⏳ **Not Yet Implemented (Phase 3):**
 - LanceDB integration for vector search
-- Duplicate detection
-- Full dashboard visualizations
-- Squad-specific metrics filtering
+- Duplicate detection with semantic similarity
+- Historical snapshots and trend calculations
 
 ---
 
@@ -206,12 +215,17 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 
 ## 🧪 Testing
 
+**Test Coverage:**
+- ✅ 13 Rust unit tests (filter queries, metrics calculations, serialization)
+- ✅ 20+ Frontend unit tests (filter store, components)
+- ✅ 15 E2E tests (complete filter workflows)
+
 ```bash
 # Run Rust tests
 cd src-tauri
 cargo test
 
-# Run frontend tests
+# Run frontend unit tests
 npm test
 
 # Run E2E tests (Playwright)
@@ -221,17 +235,19 @@ npm run test:e2e
 npm run test:coverage
 ```
 
+**Note:** Rust tests use in-memory SQLite for fast execution. E2E tests require a running app with synced data.
+
 ---
 
 ## 🚧 Known Issues & Limitations
 
-### Phase 1 Limitations
+### Current Limitations
 
 1. **Search**: Only basic keyword search (no semantic/vector search yet)
-2. **Dashboard**: Placeholder charts, need real visualizations
-3. **Embeddings**: Generated but not stored in vector DB yet
-4. **Duplicate Detection**: Not implemented yet
-5. **User Filtering**: Squad/user-specific metrics not working yet
+2. **Embeddings**: Generated but not stored in vector DB yet
+3. **Duplicate Detection**: Not implemented yet
+4. **Trend Calculations**: Trend values show 0% (requires historical comparison data)
+5. **Test Environment**: Rust tests don't compile on Windows/WSL due to webview2-com-sys (not our code)
 
 ### Workarounds
 
@@ -243,20 +259,22 @@ npm run test:coverage
 
 ## 🗺️ Roadmap
 
-### Phase 2 (Next)
+### Phase 2 ✅ **COMPLETE**
+- ✅ Enhanced dashboard charts (Recharts)
+- ✅ Date range, repository, squad, user filtering
+- ✅ Filter persistence and real-time updates
+- ✅ Comprehensive test coverage
+
+### Phase 3 (Next)
 - LanceDB integration for vector storage
 - Hybrid search (keyword + semantic)
 - Duplicate detection with cosine similarity
-- Enhanced dashboard charts (Recharts)
-- User/squad filtering
-
-### Phase 3
-- Historical trends and snapshots
+- Historical trend calculations
 - Export functionality (CSV, JSON)
-- Advanced roadmap visualizations
-- Customizable metrics definitions
 
 ### Phase 4
+- Advanced roadmap visualizations
+- Customizable metrics definitions
 - Local REST API for AI tool integration
 - MCP (Model Context Protocol) server
 - Webhooks for real-time updates
