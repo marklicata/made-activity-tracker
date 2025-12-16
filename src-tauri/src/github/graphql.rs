@@ -1,16 +1,38 @@
 use anyhow::Result;
 use serde::Deserialize;
+use thiserror::Error;
 
 const GITHUB_GRAPHQL_URL: &str = "https://api.github.com/graphql";
+
+#[derive(Debug, Error)]
+pub enum GraphQLExecuteError {
+    #[error("SAML SSO required for {owner}/{repo}. Please authorize at: https://github.com/orgs/{org}/sso")]
+    SamlRequired { owner: String, repo: String, org: String },
+
+    #[error("GraphQL errors: {0}")]
+    GraphQLErrors(String),
+
+    #[error("Request failed: {0}")]
+    RequestError(#[from] reqwest::Error),
+
+    #[error("Failed to parse response: {0}")]
+    ParseError(String),
+
+    #[error("GitHub API error ({status}): {body}")]
+    ApiError { status: u16, body: String },
+
+    #[error("No data in response")]
+    NoData,
+}
 
 /// Execute a GraphQL query against GitHub's API
 pub async fn execute_query<T: for<'de> Deserialize<'de>>(
     token: &str,
     query: &str,
     variables: serde_json::Value,
-) -> Result<T> {
+) -> Result<T, GraphQLExecuteError> {
     let client = reqwest::Client::new();
-    
+
     let response = client
         .post(GITHUB_GRAPHQL_URL)
         .header("Authorization", format!("Bearer {}", token))
@@ -21,23 +43,57 @@ pub async fn execute_query<T: for<'de> Deserialize<'de>>(
         }))
         .send()
         .await?;
-    
+
     let status = response.status();
     let body = response.text().await?;
-    
+
     if !status.is_success() {
-        anyhow::bail!("GitHub API error ({}): {}", status, body);
+        return Err(GraphQLExecuteError::ApiError {
+            status: status.as_u16(),
+            body,
+        });
     }
-    
+
     let response_body: GraphQLResponse<T> = serde_json::from_str(&body)
-        .map_err(|e| anyhow::anyhow!("Failed to parse response: {}. Body: {}", e, body))?;
-    
+        .map_err(|e| GraphQLExecuteError::ParseError(format!("{}. Body: {}", e, body)))?;
+
     if let Some(errors) = response_body.errors {
+        // Check for SAML errors
+        if let Some(saml_error) = detect_saml_error(&errors, &variables) {
+            return Err(saml_error);
+        }
+
         let error_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-        anyhow::bail!("GraphQL errors: {}", error_messages.join(", "));
+        return Err(GraphQLExecuteError::GraphQLErrors(error_messages.join(", ")));
     }
-    
-    response_body.data.ok_or_else(|| anyhow::anyhow!("No data in response"))
+
+    response_body.data.ok_or(GraphQLExecuteError::NoData)
+}
+
+/// Detect if errors contain SAML SSO requirement and construct helpful error
+fn detect_saml_error(errors: &[GraphQLError], variables: &serde_json::Value) -> Option<GraphQLExecuteError> {
+    for error in errors {
+        // Check if this is a SAML error
+        if let Some(extensions) = &error.extensions {
+            if extensions.saml_failure == Some(true) {
+                // Extract owner and repo from variables
+                let owner = variables.get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let repo = variables.get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                // For SAML errors, the org is typically the owner
+                let org = owner.clone();
+
+                return Some(GraphQLExecuteError::SamlRequired { owner, repo, org });
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +105,15 @@ struct GraphQLResponse<T> {
 #[derive(Debug, Deserialize)]
 struct GraphQLError {
     message: String,
+    #[serde(rename = "type")]
+    error_type: Option<String>,
+    path: Option<Vec<String>>,
+    extensions: Option<ErrorExtensions>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorExtensions {
+    saml_failure: Option<bool>,
 }
 
 // ============================================================================

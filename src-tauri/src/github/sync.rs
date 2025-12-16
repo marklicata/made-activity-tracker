@@ -1,6 +1,6 @@
 use crate::db::queries::{self, is_bot_user};
 use crate::db::AppState;
-use crate::github::graphql::{self, *};
+use crate::github::graphql::{self, GraphQLExecuteError, *};
 use crate::embeddings::{generate_embeddings, generator};
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
@@ -219,8 +219,27 @@ async fn sync_issues(
             "cursor": cursor,
             "since": since
         });
-        
-        let response: IssuesResponse = graphql::execute_query(token, ISSUES_QUERY, variables).await?;
+
+        let response: IssuesResponse = match graphql::execute_query(token, ISSUES_QUERY, variables).await {
+            Ok(resp) => resp,
+            Err(GraphQLExecuteError::SamlRequired { owner, repo, org }) => {
+                tracing::warn!(
+                    "⚠️  SAML SSO required for {}/{}",
+                    owner, repo
+                );
+                tracing::warn!(
+                    "   Please authorize this app at: https://github.com/orgs/{}/sso",
+                    org
+                );
+                tracing::warn!(
+                    "   After authorizing, re-run the sync to fetch data from this repository."
+                );
+                return Ok(()); // Skip this repo but continue with others
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("GraphQL error: {}", e));
+            }
+        };
         let issues = response.repository.issues;
         
         for issue_node in &issues.nodes {
@@ -326,8 +345,27 @@ async fn sync_pull_requests(
             "name": name,
             "cursor": cursor
         });
-        
-        let response: PullRequestsResponse = graphql::execute_query(token, PULL_REQUESTS_QUERY, variables).await?;
+
+        let response: PullRequestsResponse = match graphql::execute_query(token, PULL_REQUESTS_QUERY, variables).await {
+            Ok(resp) => resp,
+            Err(GraphQLExecuteError::SamlRequired { owner, repo, org }) => {
+                tracing::warn!(
+                    "⚠️  SAML SSO required for {}/{}",
+                    owner, repo
+                );
+                tracing::warn!(
+                    "   Please authorize this app at: https://github.com/orgs/{}/sso",
+                    org
+                );
+                tracing::warn!(
+                    "   After authorizing, re-run the sync to fetch data from this repository."
+                );
+                return Ok(()); // Skip this repo but continue with others
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("GraphQL error: {}", e));
+            }
+        };
         let prs = response.repository.pull_requests;
         
         for pr_node in &prs.nodes {
@@ -433,8 +471,27 @@ async fn sync_milestones(
         "owner": owner,
         "name": name
     });
-    
-    let response: MilestonesResponse = graphql::execute_query(token, MILESTONES_QUERY, variables).await?;
+
+    let response: MilestonesResponse = match graphql::execute_query(token, MILESTONES_QUERY, variables).await {
+        Ok(resp) => resp,
+        Err(GraphQLExecuteError::SamlRequired { owner, repo, org }) => {
+            tracing::warn!(
+                "⚠️  SAML SSO required for {}/{}",
+                owner, repo
+            );
+            tracing::warn!(
+                "   Please authorize this app at: https://github.com/orgs/{}/sso",
+                org
+            );
+            tracing::warn!(
+                "   After authorizing, re-run the sync to fetch data from this repository."
+            );
+            return Ok(()); // Skip this repo but continue with others
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("GraphQL error: {}", e));
+        }
+    };
     let milestones = response.repository.milestones.nodes;
     let total_synced = milestones.len() as i32;
     
