@@ -1,0 +1,12 @@
+[build]
+# Enable incremental compilation (caches intermediate results)
+incremental = true
+
+# Use faster linker on Windows (lld is much faster than the default MSVC linker)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/DEBUG:NONE"]
+
+# Optional: Reduce codegen units for faster linking (trades parallel compile for faster link)
+# Uncomment if linking is your bottleneck
+# [profile.dev]
+# codegen-units = 512

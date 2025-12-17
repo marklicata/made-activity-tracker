@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:tauri": "tauri dev",
+    "dev:backend": "cd src-tauri && cargo build",
     "build": "tsc && vite build",
+    "build:release": "tsc && vite build && cd src-tauri && cargo build --release",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest",
