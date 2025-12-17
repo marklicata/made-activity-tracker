@@ -10,6 +10,7 @@ mod github;
 mod metrics;
 mod project;
 mod search;
+mod team;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -75,6 +76,11 @@ fn main() {
             project::commands::get_project_activity_heatmap,
             project::commands::get_project_lifecycle_metrics,
             project::commands::get_project_summary,
+
+            // Team/user-centric commands
+            team::commands::add_tracked_user,
+            team::commands::remove_tracked_user,
+            team::commands::get_tracked_users,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

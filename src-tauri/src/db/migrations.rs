@@ -7,6 +7,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     // Run migrations for existing databases
     migrate_add_embedding_columns(conn)?;
+    migrate_add_tracked_users_table(conn)?;
 
     tracing::info!("Database migrations completed");
     Ok(())
@@ -42,6 +43,38 @@ fn migrate_add_embedding_columns(conn: &Connection) -> Result<()> {
     if !has_pr_embedding {
         tracing::info!("Adding embedding column to pull_requests table...");
         conn.execute("ALTER TABLE pull_requests ADD COLUMN embedding BLOB", [])?;
+    }
+
+    Ok(())
+}
+
+/// Add tracked_users table for user-centric view
+fn migrate_add_tracked_users_table(conn: &Connection) -> Result<()> {
+    // Check if tracked_users table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tracked_users'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !table_exists {
+        tracing::info!("Creating tracked_users table...");
+        conn.execute(
+            "CREATE TABLE tracked_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                added_at TEXT NOT NULL,
+                UNIQUE(user_id)
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX idx_tracked_users_added ON tracked_users(added_at)",
+            [],
+        )?;
     }
 
     Ok(())
@@ -150,6 +183,14 @@ CREATE TABLE IF NOT EXISTS squad_members (
     PRIMARY KEY(squad_id, user_id)
 );
 
+-- Tracked users for user-centric view
+CREATE TABLE IF NOT EXISTS tracked_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    added_at TEXT NOT NULL,
+    UNIQUE(user_id)
+);
+
 -- Sync log for tracking incremental updates
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY,
@@ -185,4 +226,6 @@ CREATE INDEX IF NOT EXISTS idx_prs_merged ON pull_requests(merged_at);
 
 CREATE INDEX IF NOT EXISTS idx_milestones_repo ON milestones(repo_id);
 CREATE INDEX IF NOT EXISTS idx_milestones_due ON milestones(due_on);
+
+CREATE INDEX IF NOT EXISTS idx_tracked_users_added ON tracked_users(added_at);
 "#;

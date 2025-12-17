@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Folder,
+  Users,
   Map,
   Search,
   Settings,
@@ -15,6 +16,7 @@ import clsx from 'clsx';
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: Folder, label: 'Projects' },
+  { to: '/team', icon: Users, label: 'Team' },
   { to: '/roadmap', icon: Map, label: 'Roadmap' },
   { to: '/search', icon: Search, label: 'Search' },
   { to: '/settings', icon: Settings, label: 'Settings' },

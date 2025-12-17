@@ -8,6 +8,8 @@ import Search from '@/pages/Search';
 import Settings from '@/pages/Settings';
 import Login from '@/pages/Login';
 import ProjectDeepDive from '@/pages/ProjectDeepDive';
+import TeamView from '@/pages/TeamView';
+import UserDetail from '@/pages/UserDetail';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -35,6 +37,8 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:owner/:repo" element={<ProjectDeepDive />} />
+          <Route path="team" element={<TeamView />} />
+          <Route path="team/:username" element={<UserDetail />} />
           <Route path="roadmap" element={<Roadmap />} />
           <Route path="search" element={<Search />} />
           <Route path="settings" element={<Settings />} />
