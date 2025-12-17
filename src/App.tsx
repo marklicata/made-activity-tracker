@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@stores/authStore';
 import Layout from '@components/Layout';
 import Dashboard from '@/pages/Dashboard';
+import Projects from '@/pages/Projects';
 import Roadmap from '@/pages/Roadmap';
 import Search from '@/pages/Search';
 import Settings from '@/pages/Settings';
@@ -32,10 +33,11 @@ function App() {
           }
         >
           <Route index element={<Dashboard />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="projects/:owner/:repo" element={<ProjectDeepDive />} />
           <Route path="roadmap" element={<Roadmap />} />
           <Route path="search" element={<Search />} />
           <Route path="settings" element={<Settings />} />
-          <Route path="projects/:owner/:repo" element={<ProjectDeepDive />} />
         </Route>
       </Routes>
     </BrowserRouter>
