@@ -1,6 +1,8 @@
 use crate::db::queries::{self, is_bot_user};
 use crate::db::AppState;
-use crate::github::graphql::{self, *};
+use crate::github::cli::GitHubCli;
+use crate::github::graphql::{self, GraphQLExecuteError, *};
+use crate::github::rest_api;
 use crate::embeddings::{generate_embeddings, generator};
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
@@ -219,8 +221,22 @@ async fn sync_issues(
             "cursor": cursor,
             "since": since
         });
-        
-        let response: IssuesResponse = graphql::execute_query(token, ISSUES_QUERY, variables).await?;
+
+        let response: IssuesResponse = match graphql::execute_query(token, ISSUES_QUERY, variables).await {
+            Ok(resp) => resp,
+            Err(GraphQLExecuteError::SamlRequired { owner: err_owner, repo: err_repo, org }) => {
+                tracing::warn!(
+                    "⚠️  SAML SSO required for {}/{}, trying REST API fallback...",
+                    err_owner, err_repo
+                );
+
+                // Try REST API fallback
+                return sync_issues_rest_fallback(state, token, repo_id, owner, name, since, excluded_bots).await;
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("GraphQL error: {}", e));
+            }
+        };
         let issues = response.repository.issues;
         
         for issue_node in &issues.nodes {
@@ -326,8 +342,22 @@ async fn sync_pull_requests(
             "name": name,
             "cursor": cursor
         });
-        
-        let response: PullRequestsResponse = graphql::execute_query(token, PULL_REQUESTS_QUERY, variables).await?;
+
+        let response: PullRequestsResponse = match graphql::execute_query(token, PULL_REQUESTS_QUERY, variables).await {
+            Ok(resp) => resp,
+            Err(GraphQLExecuteError::SamlRequired { owner: err_owner, repo: err_repo, org: _org }) => {
+                tracing::warn!(
+                    "⚠️  SAML SSO required for {}/{}, trying REST API fallback...",
+                    err_owner, err_repo
+                );
+
+                // Try REST API fallback
+                return sync_pull_requests_rest_fallback(state, token, repo_id, owner, name, excluded_bots).await;
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("GraphQL error: {}", e));
+            }
+        };
         let prs = response.repository.pull_requests;
         
         for pr_node in &prs.nodes {
@@ -433,8 +463,22 @@ async fn sync_milestones(
         "owner": owner,
         "name": name
     });
-    
-    let response: MilestonesResponse = graphql::execute_query(token, MILESTONES_QUERY, variables).await?;
+
+    let response: MilestonesResponse = match graphql::execute_query(token, MILESTONES_QUERY, variables).await {
+        Ok(resp) => resp,
+        Err(GraphQLExecuteError::SamlRequired { owner: err_owner, repo: err_repo, org: _org }) => {
+            tracing::warn!(
+                "⚠️  SAML SSO required for {}/{}, trying REST API fallback...",
+                err_owner, err_repo
+            );
+
+            // Try REST API fallback
+            return sync_milestones_rest_fallback(state, token, repo_id, owner, name).await;
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("GraphQL error: {}", e));
+        }
+    };
     let milestones = response.repository.milestones.nodes;
     let total_synced = milestones.len() as i32;
     
@@ -460,4 +504,461 @@ async fn sync_milestones(
     
     tracing::info!("Synced {} milestones for {}/{}", total_synced, owner, name);
     Ok(())
+}
+
+/// REST API fallback for syncing issues when GraphQL fails due to SAML
+async fn sync_issues_rest_fallback(
+    state: &AppState,
+    token: &str,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+    since: &str,
+    excluded_bots: &[String],
+) -> Result<()> {
+    tracing::info!("Using REST API fallback for issues in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "issues")?
+    };
+
+    match rest_api::fetch_issues_rest(token, owner, name, since).await {
+        Ok(issues) => {
+            let mut total_synced = 0;
+
+            for issue in &issues {
+                // Skip pull requests (they come mixed in the issues endpoint)
+                if issue.pull_request.is_some() {
+                    continue;
+                }
+
+                // Skip bot authors
+                if let Some(user) = &issue.user {
+                    if is_bot_user(&user.login, excluded_bots) {
+                        continue;
+                    }
+                }
+
+                // Get or create author
+                let author_id = if let Some(user) = &issue.user {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, None, false)?)
+                } else {
+                    None
+                };
+
+                // Get assignee
+                let assignee_id = if let Some(assignee) = &issue.assignee {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, assignee.id, &assignee.login, None, None, false)?)
+                } else {
+                    None
+                };
+
+                // Get milestone ID
+                let milestone_id = if let Some(milestone) = &issue.milestone {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::get_milestone_id_by_github_id(&conn, milestone.number as i64)?
+                } else {
+                    None
+                };
+
+                // Extract labels
+                let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
+                // Upsert issue
+                {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::upsert_issue(
+                        &conn,
+                        issue.id,
+                        repo_id,
+                        issue.number,
+                        &issue.title,
+                        issue.body.as_deref(),
+                        &issue.state,
+                        author_id,
+                        assignee_id,
+                        milestone_id,
+                        &issue.created_at,
+                        &issue.updated_at,
+                        issue.closed_at.as_deref(),
+                        &labels,
+                    )?;
+                }
+
+                total_synced += 1;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ REST API fallback succeeded: Synced {} issues for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(rest_error) => {
+            tracing::warn!("❌ REST API fallback failed for {}/{}: {}", owner, name, rest_error);
+            tracing::info!("⚙️  Trying GitHub CLI fallback...");
+
+            // Try CLI as final fallback
+            return sync_issues_cli_fallback(state, repo_id, owner, name, excluded_bots).await;
+        }
+    }
+}
+
+/// REST API fallback for syncing pull requests when GraphQL fails due to SAML
+async fn sync_pull_requests_rest_fallback(
+    state: &AppState,
+    token: &str,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+    excluded_bots: &[String],
+) -> Result<()> {
+    tracing::info!("Using REST API fallback for PRs in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "pull_requests")?
+    };
+
+    match rest_api::fetch_pull_requests_rest(token, owner, name).await {
+        Ok(prs) => {
+            let mut total_synced = 0;
+
+            for pr in &prs {
+                // Skip bot authors
+                if let Some(user) = &pr.user {
+                    if is_bot_user(&user.login, excluded_bots) {
+                        continue;
+                    }
+                }
+
+                // Get or create author
+                let author_id = if let Some(user) = &pr.user {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, None, false)?)
+                } else {
+                    None
+                };
+
+                // Extract labels
+                let labels: Vec<String> = pr.labels.iter().map(|l| l.name.clone()).collect();
+
+                // Upsert PR
+                {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::upsert_pull_request(
+                        &conn,
+                        pr.id,
+                        repo_id,
+                        pr.number,
+                        &pr.title,
+                        pr.body.as_deref(),
+                        &pr.state,
+                        author_id,
+                        &pr.created_at,
+                        &pr.updated_at,
+                        pr.merged_at.as_deref(),
+                        pr.closed_at.as_deref(),
+                        pr.additions.unwrap_or(0),
+                        pr.deletions.unwrap_or(0),
+                        pr.changed_files.unwrap_or(0),
+                        &labels,
+                    )?;
+                }
+
+                total_synced += 1;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ REST API fallback succeeded: Synced {} PRs for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(rest_error) => {
+            tracing::warn!("❌ REST API fallback failed for {}/{}: {}", owner, name, rest_error);
+            tracing::info!("⚙️  Trying GitHub CLI fallback...");
+
+            // Try CLI as final fallback
+            return sync_pull_requests_cli_fallback(state, repo_id, owner, name, excluded_bots).await;
+        }
+    }
+}
+
+/// REST API fallback for syncing milestones when GraphQL fails due to SAML
+async fn sync_milestones_rest_fallback(
+    state: &AppState,
+    token: &str,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+) -> Result<()> {
+    tracing::info!("Using REST API fallback for milestones in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "milestones")?
+    };
+
+    match rest_api::fetch_milestones_rest(token, owner, name).await {
+        Ok(milestones) => {
+            let total_synced = milestones.len() as i32;
+
+            for milestone in &milestones {
+                let conn = state.sqlite.lock().unwrap();
+                queries::upsert_milestone(
+                    &conn,
+                    milestone.number as i64,
+                    repo_id,
+                    &milestone.title,
+                    milestone.description.as_deref(),
+                    &milestone.state,
+                    milestone.due_on.as_deref(),
+                    milestone.open_issues,
+                    milestone.closed_issues,
+                )?;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ REST API fallback succeeded: Synced {} milestones for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(rest_error) => {
+            tracing::warn!("❌ REST API fallback failed for {}/{}: {}", owner, name, rest_error);
+            tracing::info!("⚙️  Trying GitHub CLI fallback...");
+
+            // Try CLI as final fallback
+            return sync_milestones_cli_fallback(state, repo_id, owner, name).await;
+        }
+    }
+}
+
+/// GitHub CLI fallback for syncing issues when both GraphQL and REST API fail
+async fn sync_issues_cli_fallback(
+    state: &AppState,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+    excluded_bots: &[String],
+) -> Result<()> {
+    tracing::info!("🔧 Using GitHub CLI fallback for issues in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "issues")?
+    };
+
+    // Initialize CLI client
+    let cli = match GitHubCli::new().await {
+        Ok(cli) => cli,
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI not available: {}", e);
+            tracing::warn!("   Install GitHub CLI from: https://cli.github.com");
+            return Ok(()); // Don't fail the entire sync
+        }
+    };
+
+    // Check if CLI is authenticated
+    if let Err(e) = cli.check_auth() {
+        tracing::error!("❌ GitHub CLI not authenticated: {}", e);
+        tracing::warn!("   Run: gh auth login");
+        return Ok(()); // Don't fail the entire sync
+    }
+
+    match cli.fetch_issues(owner, name).await {
+        Ok(mut issues) => {
+            let mut total_synced = 0;
+
+            for issue in &mut issues {
+                issue.repo_id = repo_id;
+
+                // Upsert issue (author and assignee IDs will be resolved later)
+                let conn = state.sqlite.lock().unwrap();
+                queries::upsert_issue(
+                    &conn,
+                    issue.github_id,
+                    repo_id,
+                    issue.number,
+                    &issue.title,
+                    issue.body.as_deref(),
+                    &issue.state,
+                    issue.author_id,
+                    issue.assignee_id,
+                    issue.milestone_id,
+                    &issue.created_at,
+                    &issue.updated_at,
+                    issue.closed_at.as_deref(),
+                    &issue.labels,
+                )?;
+
+                total_synced += 1;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ GitHub CLI fallback succeeded: Synced {} issues for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI fallback failed for {}/{}: {}", owner, name, e);
+            tracing::warn!("   All sync methods failed. Please ensure:");
+            tracing::warn!("   1. You have access to this repository");
+            tracing::warn!("   2. GitHub CLI is installed and authenticated: gh auth login");
+            tracing::warn!("   3. For SAML-protected repos: gh auth status");
+            Ok(()) // Don't fail the entire sync
+        }
+    }
+}
+
+/// GitHub CLI fallback for syncing pull requests when both GraphQL and REST API fail
+async fn sync_pull_requests_cli_fallback(
+    state: &AppState,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+    _excluded_bots: &[String],
+) -> Result<()> {
+    tracing::info!("🔧 Using GitHub CLI fallback for PRs in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "pull_requests")?
+    };
+
+    // Initialize CLI client
+    let cli = match GitHubCli::new().await {
+        Ok(cli) => cli,
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI not available: {}", e);
+            tracing::warn!("   Install GitHub CLI from: https://cli.github.com");
+            return Ok(()); // Don't fail the entire sync
+        }
+    };
+
+    // Check if CLI is authenticated
+    if let Err(e) = cli.check_auth() {
+        tracing::error!("❌ GitHub CLI not authenticated: {}", e);
+        tracing::warn!("   Run: gh auth login");
+        return Ok(()); // Don't fail the entire sync
+    }
+
+    match cli.fetch_pull_requests(owner, name).await {
+        Ok(mut prs) => {
+            let mut total_synced = 0;
+
+            for pr in &mut prs {
+                pr.repo_id = repo_id;
+
+                // Upsert PR (author ID will be resolved later)
+                let conn = state.sqlite.lock().unwrap();
+                queries::upsert_pull_request(
+                    &conn,
+                    pr.github_id,
+                    repo_id,
+                    pr.number,
+                    &pr.title,
+                    pr.body.as_deref(),
+                    &pr.state,
+                    pr.author_id,
+                    &pr.created_at,
+                    &pr.updated_at,
+                    pr.merged_at.as_deref(),
+                    pr.closed_at.as_deref(),
+                    pr.additions,
+                    pr.deletions,
+                    pr.changed_files,
+                    &pr.labels,
+                )?;
+
+                total_synced += 1;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ GitHub CLI fallback succeeded: Synced {} PRs for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI fallback failed for {}/{}: {}", owner, name, e);
+            tracing::warn!("   All sync methods failed. Please ensure:");
+            tracing::warn!("   1. You have access to this repository");
+            tracing::warn!("   2. GitHub CLI is installed and authenticated: gh auth login");
+            tracing::warn!("   3. For SAML-protected repos: gh auth status");
+            Ok(()) // Don't fail the entire sync
+        }
+    }
+}
+
+/// GitHub CLI fallback for syncing milestones when both GraphQL and REST API fail
+async fn sync_milestones_cli_fallback(
+    state: &AppState,
+    repo_id: i64,
+    owner: &str,
+    name: &str,
+) -> Result<()> {
+    tracing::info!("🔧 Using GitHub CLI fallback for milestones in {}/{}", owner, name);
+
+    let log_id = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::record_sync_start(&conn, repo_id, "milestones")?
+    };
+
+    // Initialize CLI client
+    let cli = match GitHubCli::new().await {
+        Ok(cli) => cli,
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI not available: {}", e);
+            tracing::warn!("   Install GitHub CLI from: https://cli.github.com");
+            return Ok(()); // Don't fail the entire sync
+        }
+    };
+
+    // Check if CLI is authenticated
+    if let Err(e) = cli.check_auth() {
+        tracing::error!("❌ GitHub CLI not authenticated: {}", e);
+        tracing::warn!("   Run: gh auth login");
+        return Ok(()); // Don't fail the entire sync
+    }
+
+    match cli.fetch_milestones(owner, name).await {
+        Ok(milestones) => {
+            let total_synced = milestones.len() as i32;
+
+            for milestone in &milestones {
+                let conn = state.sqlite.lock().unwrap();
+                queries::upsert_milestone(
+                    &conn,
+                    milestone.github_id,
+                    repo_id,
+                    &milestone.title,
+                    milestone.description.as_deref(),
+                    &milestone.state,
+                    milestone.due_on.as_deref(),
+                    milestone.open_issues,
+                    milestone.closed_issues,
+                )?;
+            }
+
+            let conn = state.sqlite.lock().unwrap();
+            queries::record_sync_complete(&conn, log_id, total_synced)?;
+
+            tracing::info!("✅ GitHub CLI fallback succeeded: Synced {} milestones for {}/{}", total_synced, owner, name);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("❌ GitHub CLI fallback failed for {}/{}: {}", owner, name, e);
+            tracing::warn!("   All sync methods failed. Please ensure:");
+            tracing::warn!("   1. You have access to this repository");
+            tracing::warn!("   2. GitHub CLI is installed and authenticated: gh auth login");
+            tracing::warn!("   3. For SAML-protected repos: gh auth status");
+            Ok(()) // Don't fail the entire sync
+        }
+    }
 }
