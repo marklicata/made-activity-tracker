@@ -8,6 +8,7 @@ mod db;
 mod embeddings;
 mod github;
 mod metrics;
+mod project;
 mod search;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -67,6 +68,13 @@ fn main() {
             
             // Roadmap commands
             github::commands::get_roadmap,
+
+            // Project deep dive commands
+            project::commands::get_project_timeline,
+            project::commands::get_project_contributors,
+            project::commands::get_project_activity_heatmap,
+            project::commands::get_project_lifecycle_metrics,
+            project::commands::get_project_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
