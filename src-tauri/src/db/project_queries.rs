@@ -81,14 +81,6 @@ pub fn get_timeline_events(
 ) -> Result<Vec<TimelineEvent>> {
     let mut events = Vec::new();
 
-    // Build the date filter clause
-    let date_filter = match (start_date, end_date) {
-        (Some(start), Some(end)) => format!(" AND timestamp >= '{}' AND timestamp <= '{}'", start, end),
-        (Some(start), None) => format!(" AND timestamp >= '{}'", start),
-        (None, Some(end)) => format!(" AND timestamp <= '{}'", end),
-        (None, None) => String::new(),
-    };
-
     // Build the user filter clause
     let user_filter = match user_id {
         Some(uid) => format!(" AND author_id = {}", uid),
@@ -102,6 +94,14 @@ pub fn get_timeline_events(
 
     // Fetch issue events (opened and closed)
     if include_issues {
+        // Build date filter for issues
+        let date_filter = match (start_date, end_date) {
+            (Some(start), Some(end)) => format!(" AND i.created_at >= '{}' AND i.created_at <= '{}'", start, end),
+            (Some(start), None) => format!(" AND i.created_at >= '{}'", start),
+            (None, Some(end)) => format!(" AND i.created_at <= '{}'", end),
+            (None, None) => String::new(),
+        };
+
         // Issue opened events
         let query = format!(
             "SELECT i.id, i.number, i.title, i.body, i.created_at, i.author_id,
@@ -147,6 +147,13 @@ pub fn get_timeline_events(
         }
 
         // Issue closed events
+        let closed_date_filter = match (start_date, end_date) {
+            (Some(start), Some(end)) => format!(" AND i.closed_at >= '{}' AND i.closed_at <= '{}'", start, end),
+            (Some(start), None) => format!(" AND i.closed_at >= '{}'", start),
+            (None, Some(end)) => format!(" AND i.closed_at <= '{}'", end),
+            (None, None) => String::new(),
+        };
+
         let query = format!(
             "SELECT i.id, i.number, i.title, i.body, i.closed_at, i.author_id,
                     u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot
@@ -155,7 +162,7 @@ pub fn get_timeline_events(
              WHERE i.repo_id = ?1 AND i.closed_at IS NOT NULL{}{}
              ORDER BY i.closed_at DESC
              LIMIT {}",
-            date_filter.replace("timestamp", "i.closed_at"),
+            closed_date_filter,
             user_filter,
             limit
         );
@@ -195,6 +202,14 @@ pub fn get_timeline_events(
 
     // Fetch PR events (opened, merged, closed)
     if include_prs {
+        // Build date filter for PRs
+        let pr_date_filter = match (start_date, end_date) {
+            (Some(start), Some(end)) => format!(" AND pr.created_at >= '{}' AND pr.created_at <= '{}'", start, end),
+            (Some(start), None) => format!(" AND pr.created_at >= '{}'", start),
+            (None, Some(end)) => format!(" AND pr.created_at <= '{}'", end),
+            (None, None) => String::new(),
+        };
+
         // PR opened events
         let query = format!(
             "SELECT pr.id, pr.number, pr.title, pr.body, pr.created_at, pr.additions, pr.deletions, pr.changed_files, pr.author_id,
@@ -204,7 +219,7 @@ pub fn get_timeline_events(
              WHERE pr.repo_id = ?1{}{}
              ORDER BY pr.created_at DESC
              LIMIT {}",
-            date_filter, user_filter, limit
+            pr_date_filter, user_filter, limit
         );
 
         let mut stmt = conn.prepare(&query)?;
@@ -243,6 +258,13 @@ pub fn get_timeline_events(
         }
 
         // PR merged events
+        let merged_date_filter = match (start_date, end_date) {
+            (Some(start), Some(end)) => format!(" AND pr.merged_at >= '{}' AND pr.merged_at <= '{}'", start, end),
+            (Some(start), None) => format!(" AND pr.merged_at >= '{}'", start),
+            (None, Some(end)) => format!(" AND pr.merged_at <= '{}'", end),
+            (None, None) => String::new(),
+        };
+
         let query = format!(
             "SELECT pr.id, pr.number, pr.title, pr.body, pr.merged_at, pr.additions, pr.deletions, pr.changed_files, pr.author_id,
                     u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot
@@ -251,7 +273,7 @@ pub fn get_timeline_events(
              WHERE pr.repo_id = ?1 AND pr.merged_at IS NOT NULL{}{}
              ORDER BY pr.merged_at DESC
              LIMIT {}",
-            date_filter.replace("timestamp", "pr.merged_at"),
+            merged_date_filter,
             user_filter,
             limit
         );
@@ -294,6 +316,18 @@ pub fn get_timeline_events(
 
     // Fetch review events
     if include_reviews {
+        let review_date_filter = match (start_date, end_date) {
+            (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+            (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+            (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
+            (None, None) => String::new(),
+        };
+
+        let review_user_filter = match user_id {
+            Some(uid) => format!(" AND r.reviewer_id = {}", uid),
+            None => String::new(),
+        };
+
         let query = format!(
             "SELECT r.id, r.submitted_at, r.state, r.reviewer_id,
                     pr.number, pr.title,
@@ -304,8 +338,8 @@ pub fn get_timeline_events(
              WHERE pr.repo_id = ?1{}{}
              ORDER BY r.submitted_at DESC
              LIMIT {}",
-            date_filter.replace("timestamp", "r.submitted_at"),
-            user_filter.replace("author_id", "reviewer_id"),
+            review_date_filter,
+            review_user_filter,
             limit
         );
 
@@ -362,11 +396,18 @@ pub fn get_contributor_stats(
     start_date: Option<&str>,
     end_date: Option<&str>,
 ) -> Result<Vec<ContributorStats>> {
-    // Build the date filter clause
+    // Build the date filter clauses
     let date_filter = match (start_date, end_date) {
         (Some(start), Some(end)) => format!(" AND created_at >= '{}' AND created_at <= '{}'", start, end),
         (Some(start), None) => format!(" AND created_at >= '{}'", start),
         (None, Some(end)) => format!(" AND created_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    let review_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
         (None, None) => String::new(),
     };
 
@@ -384,7 +425,7 @@ pub fn get_contributor_stats(
              WHERE pr.repo_id = ?1{}
          ) AND u.is_bot = FALSE
          ORDER BY u.login",
-        date_filter, date_filter, date_filter.replace("created_at", "r.submitted_at")
+        date_filter, date_filter, review_date_filter
     );
 
     let mut stmt = conn.prepare(&query)?;
@@ -428,7 +469,7 @@ pub fn get_contributor_stats(
             "SELECT COUNT(*) FROM pr_reviews r
              JOIN pull_requests pr ON r.pr_id = pr.id
              WHERE pr.repo_id = ?1 AND r.reviewer_id = ?2{}",
-            date_filter.replace("created_at", "r.submitted_at")
+            review_date_filter
         );
         let total_prs_reviewed: i32 = conn.query_row(&review_query, params![repo_id, user.id], |row| row.get(0))?;
 
@@ -443,7 +484,7 @@ pub fn get_contributor_stats(
                 JOIN pull_requests pr ON r.pr_id = pr.id
                 WHERE pr.repo_id = ?1 AND r.reviewer_id = ?2{}
              )",
-            date_filter, date_filter, date_filter.replace("created_at", "r.submitted_at")
+            date_filter, date_filter, review_date_filter
         );
         let (first_contribution, last_contribution): (String, String) =
             conn.query_row(&contribution_query, params![repo_id, user.id], |row| {
@@ -483,11 +524,18 @@ pub fn get_activity_heatmap(
     start_date: Option<&str>,
     end_date: Option<&str>,
 ) -> Result<ActivityHeatmapData> {
-    // Build the date filter clause
+    // Build the date filter clauses
     let date_filter = match (start_date, end_date) {
-        (Some(start), Some(end)) => format!(" AND timestamp >= '{}' AND timestamp <= '{}'", start, end),
-        (Some(start), None) => format!(" AND timestamp >= '{}'", start),
-        (None, Some(end)) => format!(" AND timestamp <= '{}'", end),
+        (Some(start), Some(end)) => format!(" AND created_at >= '{}' AND created_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND created_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND created_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    let review_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
         (None, None) => String::new(),
     };
 
@@ -504,7 +552,7 @@ pub fn get_activity_heatmap(
          )
          GROUP BY date
          ORDER BY date",
-        date_filter, date_filter, date_filter.replace("created_at", "r.submitted_at")
+        date_filter, date_filter, review_date_filter
     );
 
     let mut stmt = conn.prepare(&query)?;
@@ -531,7 +579,7 @@ pub fn get_activity_heatmap(
          )
          GROUP BY hour
          ORDER BY hour",
-        date_filter, date_filter, date_filter.replace("created_at", "r.submitted_at")
+        date_filter, date_filter, review_date_filter
     );
 
     let mut stmt = conn.prepare(&query)?;
@@ -558,7 +606,7 @@ pub fn get_activity_heatmap(
          )
          GROUP BY weekday
          ORDER BY weekday",
-        date_filter, date_filter, date_filter.replace("created_at", "r.submitted_at")
+        date_filter, date_filter, review_date_filter
     );
 
     let mut stmt = conn.prepare(&query)?;
