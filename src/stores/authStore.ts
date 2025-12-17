@@ -20,11 +20,20 @@ interface GitHubUser {
   avatar_url: string;
 }
 
+// Check if running in frontend-only mode (no Tauri backend)
+const isFrontendOnly = typeof window !== 'undefined' && !(window as any).__TAURI__;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      isAuthenticated: false,
-      user: null,
+      // In frontend-only mode, bypass auth for development
+      isAuthenticated: isFrontendOnly,
+      user: isFrontendOnly ? {
+        id: 1,
+        login: 'dev-user',
+        name: 'Development User',
+        avatar_url: 'https://github.com/github.png',
+      } : null,
       accessToken: null,
 
       login: async () => {

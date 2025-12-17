@@ -1,11 +1,12 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Map, 
-  Search, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Folder,
+  Map,
+  Search,
+  Settings,
   RefreshCw,
-  LogOut 
+  LogOut
 } from 'lucide-react';
 import { useSyncStore } from '@stores/syncStore';
 import { useAuthStore } from '@stores/authStore';
@@ -13,6 +14,7 @@ import clsx from 'clsx';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/projects', icon: Folder, label: 'Projects' },
   { to: '/roadmap', icon: Map, label: 'Roadmap' },
   { to: '/search', icon: Search, label: 'Search' },
   { to: '/settings', icon: Settings, label: 'Settings' },
