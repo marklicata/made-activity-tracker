@@ -56,3 +56,28 @@ export interface Metrics {
     test_coverage_trend: number;
   };
 }
+
+export interface User {
+  id: number;
+  github_id: number;
+  login: string;
+  name: string | null;
+  avatar_url: string | null;
+  is_bot: boolean;
+}
+
+export interface UserSummary {
+  user: User;
+  total_commits: number;
+  total_prs_created: number;
+  total_prs_merged: number;
+  total_prs_reviewed: number;
+  total_issues_opened: number;
+  total_issues_closed: number;
+  lines_added: number;
+  lines_deleted: number;
+  repositories_touched: number;
+  first_activity: string | null;
+  last_activity: string | null;
+  activity_status: 'active' | 'quiet' | 'idle';
+}
