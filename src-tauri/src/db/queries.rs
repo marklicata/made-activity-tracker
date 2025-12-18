@@ -28,6 +28,27 @@ pub fn get_enabled_repositories(conn: &Connection) -> Result<Vec<Repository>> {
     Ok(repos)
 }
 
+/// Get a repository by ID
+pub fn get_repository_by_id(conn: &Connection, id: i64) -> Result<Repository> {
+    let repo = conn.query_row(
+        "SELECT id, owner, name, github_id, enabled, last_synced_at 
+         FROM repositories WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Repository {
+                id: row.get(0)?,
+                owner: row.get(1)?,
+                name: row.get(2)?,
+                github_id: row.get(3)?,
+                enabled: row.get(4)?,
+                last_synced_at: row.get(5)?,
+            })
+        },
+    )?;
+    
+    Ok(repo)
+}
+
 /// Insert or update a repository
 pub fn upsert_repository(
     conn: &Connection,

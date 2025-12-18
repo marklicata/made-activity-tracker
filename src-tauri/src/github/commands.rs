@@ -90,6 +90,22 @@ pub async fn sync_github_data(
         .map_err(|e| e.to_string())
 }
 
+/// Sync a specific repository by ID
+#[tauri::command]
+pub async fn sync_repository(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    repo_id: i64,
+) -> Result<(), String> {
+    let token = auth::get_token()
+        .map_err(|e| e.to_string())?
+        .ok_or("Not authenticated")?;
+
+    sync::sync_single_repo(&app, &state, &token, repo_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Get roadmap data (milestones grouped by cycle)
 #[tauri::command]
 pub async fn get_roadmap(state: State<'_, AppState>) -> Result<Vec<CycleGroup>, String> {

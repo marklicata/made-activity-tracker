@@ -82,6 +82,59 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
     Ok(())
 }
 
+/// Sync a single repository by ID
+pub async fn sync_single_repo(app: &AppHandle, state: &AppState, token: &str, repo_id: i64) -> Result<()> {
+    // Load config to get history_days and excluded_bots
+    let config = crate::config::commands::load_config_internal(app)?;
+    
+    // Get the repository from database
+    let repo = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::get_repository_by_id(&conn, repo_id)?
+    };
+
+    let since_date = Utc::now() - Duration::days(config.history_days as i64);
+    let since = since_date.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    tracing::info!("Starting sync for {}/{}", repo.owner, repo.name);
+    emit_progress(app, "syncing", 1, 1, &format!("Syncing {}/{}", repo.owner, repo.name));
+
+    // Sync milestones first (needed for issue references)
+    if let Err(e) = sync_milestones(state, token, repo.id, &repo.owner, &repo.name).await {
+        tracing::error!("Failed to sync milestones for {}/{}: {}", repo.owner, repo.name, e);
+    }
+
+    // Sync issues
+    if let Err(e) = sync_issues(state, token, repo.id, &repo.owner, &repo.name, &since, &config.excluded_bots).await {
+        tracing::error!("Failed to sync issues for {}/{}: {}", repo.owner, repo.name, e);
+    }
+
+    // Sync PRs
+    if let Err(e) = sync_pull_requests(state, token, repo.id, &repo.owner, &repo.name, &config.excluded_bots).await {
+        tracing::error!("Failed to sync PRs for {}/{}: {}", repo.owner, repo.name, e);
+    }
+
+    // Update last synced timestamp
+    {
+        let conn = state.sqlite.lock().unwrap();
+        queries::update_repo_synced_at(&conn, repo.id)?;
+    }
+
+    // Generate embeddings for new items from this repo
+    tracing::info!("Starting embedding generation for new items...");
+    match generate_embeddings_for_new_items(app, state).await {
+        Ok(()) => tracing::info!("Embedding generation completed successfully"),
+        Err(e) => {
+            tracing::error!("Embedding generation failed: {}", e);
+            // Don't fail the whole sync, just log the error
+        }
+    }
+
+    emit_progress(app, "complete", 1, 1, "Sync complete!");
+    tracing::info!("Sync completed successfully for {}/{}", repo.owner, repo.name);
+    Ok(())
+}
+
 /// Generate embeddings for issues and PRs that don't have them yet
 async fn generate_embeddings_for_new_items(app: &AppHandle, state: &AppState) -> Result<()> {
     const BATCH_SIZE: i64 = 50;
