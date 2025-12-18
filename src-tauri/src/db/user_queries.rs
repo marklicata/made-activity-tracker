@@ -487,3 +487,138 @@ pub fn get_user_repo_distribution(
 
     Ok(contributions)
 }
+
+// ============================================================================
+// COLLABORATION MATRIX QUERIES
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InteractionStats {
+    pub reviews_given: i32,     // How many times this user reviewed the other user's PRs
+    pub reviews_received: i32,  // How many times the other user reviewed this user's PRs
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollaborationMatrix {
+    pub users: Vec<User>,
+    pub interactions: std::collections::HashMap<String, std::collections::HashMap<String, InteractionStats>>,
+}
+
+/// Get collaboration matrix showing interactions between team members
+/// This shows who reviews whose code
+pub fn get_collaboration_matrix(
+    conn: &Connection,
+    user_ids: Vec<i64>,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<CollaborationMatrix> {
+    use std::collections::HashMap;
+
+    // First, get all users
+    let placeholders = user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let user_query = format!(
+        "SELECT id, github_id, login, name, avatar_url, is_bot
+         FROM users
+         WHERE id IN ({})",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&user_query)?;
+    let user_params: Vec<&dyn rusqlite::ToSql> = user_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+    let users: Vec<User> = stmt
+        .query_map(&user_params[..], |row| {
+            Ok(User {
+                id: row.get(0)?,
+                github_id: row.get(1)?,
+                login: row.get(2)?,
+                name: row.get(3)?,
+                avatar_url: row.get(4)?,
+                is_bot: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Build date filter for reviews
+    let date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    // Initialize the interactions map
+    let mut interactions: HashMap<String, HashMap<String, InteractionStats>> = HashMap::new();
+
+    // Initialize all user pairs with zero interactions
+    for user in &users {
+        let mut user_interactions = HashMap::new();
+        for other_user in &users {
+            if user.id != other_user.id {
+                user_interactions.insert(
+                    other_user.login.clone(),
+                    InteractionStats {
+                        reviews_given: 0,
+                        reviews_received: 0,
+                    },
+                );
+            }
+        }
+        interactions.insert(user.login.clone(), user_interactions);
+    }
+
+    // Query for all reviews between the tracked users
+    // This counts how many times reviewer_id reviewed author_id's PRs
+    let review_query = format!(
+        "SELECT pr.author_id, r.reviewer_id, COUNT(*) as review_count
+         FROM pr_reviews r
+         JOIN pull_requests pr ON r.pr_id = pr.id
+         WHERE pr.author_id IN ({})
+           AND r.reviewer_id IN ({})
+           AND pr.author_id != r.reviewer_id{}
+         GROUP BY pr.author_id, r.reviewer_id",
+        placeholders, placeholders, date_filter
+    );
+
+    let mut stmt = conn.prepare(&review_query)?;
+    let mut all_params = user_params.clone();
+    all_params.extend(&user_params);
+
+    let review_data: Vec<(i64, i64, i32)> = stmt
+        .query_map(&all_params[..], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Create a map from user_id to login for quick lookup
+    let id_to_login: HashMap<i64, String> = users.iter()
+        .map(|u| (u.id, u.login.clone()))
+        .collect();
+
+    // Fill in the interaction counts
+    for (pr_author_id, reviewer_id, count) in review_data {
+        if let (Some(pr_author_login), Some(reviewer_login)) = (
+            id_to_login.get(&pr_author_id),
+            id_to_login.get(&reviewer_id),
+        ) {
+            // Reviewer reviewed PR author's code
+            if let Some(reviewer_interactions) = interactions.get_mut(reviewer_login) {
+                if let Some(stats) = reviewer_interactions.get_mut(pr_author_login) {
+                    stats.reviews_given = count;
+                }
+            }
+
+            // PR author received review from reviewer
+            if let Some(author_interactions) = interactions.get_mut(pr_author_login) {
+                if let Some(stats) = author_interactions.get_mut(reviewer_login) {
+                    stats.reviews_received = count;
+                }
+            }
+        }
+    }
+
+    Ok(CollaborationMatrix {
+        users,
+        interactions,
+    })
+}

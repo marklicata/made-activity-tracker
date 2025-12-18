@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { User, UserSummary } from '@/types';
+import { User, UserSummary, CollaborationMatrix } from '@/types';
 import { Loader2, Users as UsersIcon } from 'lucide-react';
 import UserManager from '@components/team/UserManager';
 import UserCard from '@components/team/UserCard';
 import TeamSummary from '@components/team/TeamSummary';
+import CollaborationGraph from '@components/team/CollaborationGraph';
 
 export default function TeamView() {
   const [trackedUsers, setTrackedUsers] = useState<User[]>([]);
   const [userSummaries, setUserSummaries] = useState<UserSummary[]>([]);
+  const [collaborationMatrix, setCollaborationMatrix] = useState<CollaborationMatrix | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +37,12 @@ export default function TeamView() {
       const users = await invoke<User[]>('get_tracked_users');
       setTrackedUsers(users);
 
+      if (users.length === 0) {
+        setUserSummaries([]);
+        setCollaborationMatrix(null);
+        return;
+      }
+
       // Load summaries for each user
       const summaries = await Promise.all(
         users.map(user =>
@@ -46,6 +54,23 @@ export default function TeamView() {
         )
       );
       setUserSummaries(summaries);
+
+      // Load collaboration matrix if we have multiple users
+      if (users.length > 1) {
+        try {
+          const matrix = await invoke<CollaborationMatrix>('get_team_collaboration_matrix', {
+            usernames: users.map(u => u.login),
+            startDate: dateRange.start,
+            endDate: dateRange.end,
+          });
+          setCollaborationMatrix(matrix);
+        } catch (matrixErr) {
+          console.error('Failed to load collaboration matrix:', matrixErr);
+          setCollaborationMatrix(null);
+        }
+      } else {
+        setCollaborationMatrix(null);
+      }
     } catch (err) {
       setError(err as string);
       console.error('Failed to load tracked users:', err);
@@ -107,6 +132,11 @@ export default function TeamView() {
                 ))}
               </div>
             </div>
+
+            {/* Collaboration Matrix */}
+            {collaborationMatrix && userSummaries.length > 1 && (
+              <CollaborationGraph matrix={collaborationMatrix} />
+            )}
           </>
         )}
       </div>

@@ -92,3 +92,13 @@ export interface RepositoryContribution {
   total_contributions: number;
   percentage_of_user_work: number;
 }
+
+export interface InteractionStats {
+  reviews_given: number;
+  reviews_received: number;
+}
+
+export interface CollaborationMatrix {
+  users: User[];
+  interactions: Record<string, Record<string, InteractionStats>>;
+}

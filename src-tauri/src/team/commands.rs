@@ -1,7 +1,7 @@
 use crate::db::{
     models::User,
     project_queries::TimelineEvent,
-    user_queries::{RepositoryContribution, UserSummary},
+    user_queries::{CollaborationMatrix, RepositoryContribution, UserSummary},
     AppState,
 };
 use rusqlite::params;
@@ -197,4 +197,44 @@ pub async fn get_user_repository_distribution(
         end_date.as_deref(),
     )
     .map_err(|e| format!("Failed to get repository distribution: {}", e))
+}
+
+/// Get collaboration matrix showing interactions between tracked users
+#[tauri::command]
+pub async fn get_team_collaboration_matrix(
+    usernames: Vec<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CollaborationMatrix, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    // Convert usernames to user IDs
+    let placeholders = usernames.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!("SELECT id FROM users WHERE login IN ({})", placeholders);
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let username_params: Vec<&dyn rusqlite::ToSql> = usernames
+        .iter()
+        .map(|u| u as &dyn rusqlite::ToSql)
+        .collect();
+
+    let user_ids: Vec<i64> = stmt
+        .query_map(&username_params[..], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    if user_ids.is_empty() {
+        return Err("No valid users found".to_string());
+    }
+
+    // Get collaboration matrix
+    crate::db::user_queries::get_collaboration_matrix(
+        &conn,
+        user_ids,
+        start_date.as_deref(),
+        end_date.as_deref(),
+    )
+    .map_err(|e| format!("Failed to get collaboration matrix: {}", e))
 }
