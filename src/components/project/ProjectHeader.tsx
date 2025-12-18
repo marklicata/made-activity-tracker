@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Package, Users, GitPullRequest, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/tauri';
 import clsx from 'clsx';
 
 interface Repository {
@@ -23,9 +25,11 @@ interface ProjectHeaderProps {
   summary: ProjectSummary;
   dateRange: { start: string; end: string };
   onDateRangeChange: (start: string, end: string) => void;
+  onSyncComplete?: () => void;
 }
 
-export default function ProjectHeader({ repository, summary, dateRange, onDateRangeChange }: ProjectHeaderProps) {
+export default function ProjectHeader({ repository, summary, dateRange, onDateRangeChange, onSyncComplete }: ProjectHeaderProps) {
+  const [syncing, setSyncing] = useState(false);
   const presets = [
     { label: 'Last 7 days', days: 7 },
     { label: 'Last 30 days', days: 30 },
@@ -39,6 +43,25 @@ export default function ProjectHeader({ repository, summary, dateRange, onDateRa
     const start = new Date();
     start.setDate(start.getDate() - days);
     onDateRangeChange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
+  }
+
+  async function handleSync() {
+    if (syncing) return;
+
+    try {
+      setSyncing(true);
+      await invoke('sync_repository', { repoId: repository.id });
+      
+      // Call the callback to reload project data
+      if (onSyncComplete) {
+        onSyncComplete();
+      }
+    } catch (error) {
+      console.error('Failed to sync repository:', error);
+      // You might want to show an error notification here
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function formatDate(dateString: string) {
@@ -84,13 +107,12 @@ export default function ProjectHeader({ repository, summary, dateRange, onDateRa
           </div>
         </div>
         <button
-          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          onClick={() => {
-            // TODO: Trigger sync
-          }}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={handleSync}
+          disabled={syncing}
         >
-          <RefreshCw className="w-4 h-4" />
-          Sync Now
+          <RefreshCw className={clsx('w-4 h-4', syncing && 'animate-spin')} />
+          {syncing ? 'Syncing...' : 'Sync Now'}
         </button>
       </div>
 

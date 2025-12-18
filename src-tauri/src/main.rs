@@ -47,6 +47,7 @@ fn main() {
             
             // Sync commands
             github::commands::sync_github_data,
+            github::commands::sync_repository,
             
             // Config commands
             config::commands::load_config,

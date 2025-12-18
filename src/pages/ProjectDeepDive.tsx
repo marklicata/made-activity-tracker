@@ -252,6 +252,7 @@ export default function ProjectDeepDive() {
           summary={summary}
           dateRange={dateRange}
           onDateRangeChange={handleDateRangeChange}
+          onSyncComplete={loadProjectData}
         />
 
         {/* Activity Heatmap */}
