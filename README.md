@@ -2,36 +2,53 @@
 
 **Metrics for Activity, Delivery & Efficiency**
 
-A desktop app for tracking GitHub team activity across multiple repositories with semantic search and productivity insights.
+A desktop application for tracking GitHub team activity across multiple repositories with semantic search, productivity insights, and team analytics.
 
 ---
 
-## 🚀 Project Status: Phase 2 Complete
+## 🚀 Features
 
-✅ **Phase 1 (Core Infrastructure):**
-- ✅ GitHub OAuth Device Flow authentication
-- ✅ SQLite database with full schema
-- ✅ GitHub GraphQL sync (issues, PRs, milestones, reviews)
-- ✅ FastEmbed local embeddings (all-MiniLM-L6-v2)
-- ✅ Business days calculations
-- ✅ Metrics engine (Speed, Ease, Quality)
-- ✅ Settings UI for repo/squad configuration
-- ✅ React frontend scaffold with routing
+### ✅ Core Platform
+- **GitHub Integration**: OAuth authentication with automatic token refresh
+- **Multi-Repository Tracking**: Monitor unlimited GitHub repositories
+- **SQLite Database**: Fast local storage with full-text search
+- **FastEmbed Embeddings**: Local semantic embeddings (all-MiniLM-L6-v2)
+- **GitHub CLI Fallback**: Automatic fallback for SAML-protected repositories
 
-✅ **Phase 2 (Dashboard Filters & Charts - NEW!):**
-- ✅ Date range filtering with presets (7/30/90/180/365 days)
-- ✅ Repository multi-select filtering
-- ✅ Squad filtering with color indicators
-- ✅ User filtering with search
-- ✅ Filter persistence (localStorage)
-- ✅ Recharts visualizations for all metrics
-- ✅ Real-time chart updates on filter changes
-- ✅ Comprehensive test coverage (Rust + Frontend + E2E)
+### ✅ Dashboard & Metrics
+- **Speed Metrics**: Cycle time, PR lead time, throughput trends
+- **Ease Metrics**: PR size, review rounds, time to first review, rework rate
+- **Quality Metrics**: Bug rate, reopen rate, PR rejection rate
+- **Interactive Charts**: Recharts visualizations with real-time updates
+- **Advanced Filtering**: Date ranges, repositories, squads, users
+- **Filter Persistence**: Saved preferences across sessions
 
-⏳ **Not Yet Implemented (Phase 3):**
-- LanceDB integration for vector search
-- Duplicate detection with semantic similarity
-- Historical snapshots and trend calculations
+### ✅ Project Deep Dive
+- **Timeline View**: Chronological activity across issues, PRs, and reviews
+- **Contributor Analysis**: Top contributors with activity breakdown
+- **Activity Heatmap**: Visual representation of project activity patterns
+- **Lifecycle Metrics**: Project-specific speed, ease, and quality metrics
+- **Project Summary**: Overview cards with key statistics
+
+### ✅ User-Centric View (NEW!)
+- **User Tracking**: Monitor specific team members across all repositories
+- **Activity Dashboard**: Individual user cards with status indicators
+- **Repository Distribution**: See where each user focuses their work
+- **Collaboration Matrix**: Visualize PR review relationships between team members
+- **Activity Trends**: Line charts showing velocity changes over time
+- **Focus Analysis**: Repository concentration with HHI score
+- **Team Summary**: Aggregate metrics across all tracked users
+- **CSV Export**: Export team and individual user reports
+- **Date Range Filtering**: Flexible time period selection with presets
+
+### ✅ Search & Discovery
+- **Hybrid Search**: Keyword and semantic search across issues and PRs
+- **Duplicate Detection**: Find similar issues using cosine similarity
+- **Smart Ranking**: Results sorted by relevance score
+
+### ✅ Roadmap Planning
+- **Milestone Tracking**: Visualize upcoming cycles and deliverables
+- **Progress Monitoring**: Track completion rates and trends
 
 ---
 
@@ -44,6 +61,9 @@ A desktop app for tracking GitHub team activity across multiple repositories wit
    - Click "New OAuth App"
    - Enable "Device Flow"
    - Copy the **Client ID**
+4. **GitHub CLI** (optional): For SAML-protected repositories
+   - Install from: https://cli.github.com
+   - Run: `gh auth login`
 
 ---
 
@@ -52,12 +72,10 @@ A desktop app for tracking GitHub team activity across multiple repositories wit
 ### 1. Install Dependencies
 
 ```bash
-cd C:\Users\malicata\source\made-activity-tracker
-
 # Install npm packages
 npm install
 
-# Rust dependencies will be installed on first build
+# Rust dependencies installed automatically on first build
 ```
 
 ### 2. Configure GitHub OAuth
@@ -76,7 +94,7 @@ npm run tauri dev
 ```
 
 **First Run:**
-- FastEmbed will download ~80MB model (one-time, cached locally)
+- FastEmbed downloads ~80MB model (one-time, cached locally)
 - Takes ~30 seconds to initialize
 
 ---
@@ -107,12 +125,33 @@ npm run tauri dev
    - Initial sync takes ~2-5 minutes for 25 repos
    - Progress bar shows status
 
-### Daily Workflow
+### Team Tracking
 
-- **Dashboard**: View Speed, Ease, Quality metrics
-- **Search**: Find issues/PRs (keyword search for now)
-- **Roadmap**: See upcoming cycles and milestones
-- **Refresh**: Click sync icon to update data
+1. **Add Team Members**
+   - Navigate to Team View
+   - Enter GitHub usernames to track
+   - View aggregate team metrics
+
+2. **Analyze Individual Contributors**
+   - Click on any user card for detailed view
+   - See activity trends, focus analysis, and repository distribution
+   - Export reports to CSV
+
+3. **Monitor Collaboration**
+   - View collaboration matrix to see PR review patterns
+   - Identify bottlenecks and collaboration opportunities
+
+### Project Analysis
+
+1. **Select a Project**
+   - Go to Projects list
+   - Click on any repository
+
+2. **Explore Project Insights**
+   - View timeline of all activity
+   - See contributor rankings
+   - Analyze activity heatmap
+   - Review lifecycle metrics
 
 ---
 
@@ -120,28 +159,84 @@ npm run tauri dev
 
 ```
 made-activity-tracker/
-├── src/                       # React frontend
-│   ├── pages/                 # Main app pages
-│   │   ├── Dashboard.tsx      # Metrics overview
-│   │   ├── Search.tsx         # Issue/PR search
-│   │   ├── Roadmap.tsx        # Cycles view
-│   │   ├── Settings.tsx       # Config management
-│   │   └── Login.tsx          # Auth flow
-│   ├── components/            # Reusable components
-│   ├── stores/                # Zustand state management
-│   └── lib/                   # Utilities
+├── src/                          # React frontend
+│   ├── pages/
+│   │   ├── Dashboard.tsx         # Metrics overview
+│   │   ├── TeamView.tsx          # Team tracking dashboard
+│   │   ├── UserDetail.tsx        # Individual user analysis
+│   │   ├── ProjectsList.tsx     # Repository list
+│   │   ├── ProjectDetail.tsx    # Project deep dive
+│   │   ├── Search.tsx            # Hybrid search
+│   │   ├── Roadmap.tsx           # Milestones view
+│   │   └── Settings.tsx          # Configuration
+│   ├── components/
+│   │   ├── team/                 # User tracking components
+│   │   ├── project/              # Project analysis components
+│   │   └── common/               # Shared components
+│   └── utils/                    # Utilities and helpers
 │
-├── src-tauri/                 # Rust backend
+├── src-tauri/                    # Rust backend
 │   └── src/
-│       ├── github/            # Auth + sync
-│       ├── db/                # SQLite queries
-│       ├── metrics/           # Calculations
-│       ├── embeddings/        # FastEmbed integration
-│       ├── search/            # Search (Phase 3)
-│       └── config/            # App configuration
+│       ├── github/               # Auth, sync, CLI fallback
+│       ├── db/                   # SQLite queries and models
+│       ├── metrics/              # Calculations
+│       ├── embeddings/           # FastEmbed integration
+│       ├── search/               # Hybrid search engine
+│       ├── project/              # Project analytics
+│       ├── team/                 # User tracking
+│       └── config/               # Configuration
 │
-├── tests/                     # Test scaffolds
-└── PLAN.md                    # Full project plan
+├── specs/                        # Feature specifications
+│   ├── PROJECT_DEEP_DIVE.md
+│   ├── USER_CENTRIC_VIEW.md
+│   └── GITHUB_CLI_FALLBACK.md
+│
+└── tests/                        # Test suites
+```
+
+---
+
+## 📊 Metrics Explained
+
+### Speed (How fast work completes)
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Avg Cycle Time | Business days from issue open → close | < 5 days |
+| Avg PR Lead Time | Business hours from PR open → merge | < 24 hours |
+| Throughput | Issues/PRs completed per week | Increasing |
+
+### Ease (How smooth the process is)
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Avg PR Size | Lines changed per PR | < 300 lines |
+| Avg Review Rounds | Review iterations per PR | < 2 rounds |
+| Time to First Review | Hours until first review | < 4 hours |
+| Rework Rate | PRs with extensive changes | < 20% |
+
+### Quality (How good the output is)
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Bug Rate | % of issues that are bugs | < 15% |
+| Reopen Rate | % of issues reopened | < 5% |
+| PR Rejection Rate | % of PRs closed without merge | < 10% |
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run Rust tests
+cd src-tauri
+cargo test
+
+# Run frontend tests
+npm test
+
+# Run E2E tests
+npm run test:e2e
 ```
 
 ---
@@ -185,135 +280,23 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 
 ---
 
-## 📊 Metrics Explained
-
-### Speed (How fast work completes)
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| Avg Cycle Time | Business days from issue open → close | < 5 days |
-| Avg PR Lead Time | Business hours from PR open → merge | < 24 hours |
-| Throughput | Issues/PRs completed per week | Increasing |
-
-### Ease (How smooth the process is)
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| Avg PR Size | Lines changed per PR | < 300 lines |
-| Avg Review Rounds | Review iterations per PR | < 2 rounds |
-| Rework Rate | PRs with extensive changes | < 20% |
-
-### Quality (How good the output is)
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| Bug Rate | % of issues that are bugs | < 15% |
-| Reopen Rate | % of issues reopened | < 5% |
-| PR Rejection Rate | % of PRs closed without merge | < 10% |
-
----
-
-## 🧪 Testing
-
-**Test Coverage:**
-- ✅ 13 Rust unit tests (filter queries, metrics calculations, serialization)
-- ✅ 20+ Frontend unit tests (filter store, components)
-- ✅ 15 E2E tests (complete filter workflows)
-
-```bash
-# Run Rust tests
-cd src-tauri
-cargo test
-
-# Run frontend unit tests
-npm test
-
-# Run E2E tests (Playwright)
-npm run test:e2e
-
-# Run with coverage
-npm run test:coverage
-```
-
-**Note:** Rust tests use in-memory SQLite for fast execution. E2E tests require a running app with synced data.
-
----
-
-## 🚧 Known Issues & Limitations
-
-### Current Limitations
-
-1. **Search**: Only basic keyword search (no semantic/vector search yet)
-2. **Embeddings**: Generated but not stored in vector DB yet
-3. **Duplicate Detection**: Not implemented yet
-4. **Trend Calculations**: Trend values show 0% (requires historical comparison data)
-5. **Test Environment**: Rust tests don't compile on Windows/WSL due to webview2-com-sys (not our code)
-
-### Workarounds
-
-- **Sync Takes Long**: First sync caches everything, subsequent syncs are incremental
-- **Model Download**: Happens automatically, but requires internet once
-- **Rate Limits**: GitHub allows 5,000 API calls/hour — should be enough for 25 repos
-
----
-
 ## 🗺️ Roadmap
 
-### Phase 2 ✅ **COMPLETE**
-- ✅ Enhanced dashboard charts (Recharts)
-- ✅ Date range, repository, squad, user filtering
-- ✅ Filter persistence and real-time updates
-- ✅ Comprehensive test coverage
+### Completed Features ✅
+- Core platform with GitHub integration
+- Dashboard with advanced filtering
+- Project Deep Dive analytics
+- User-Centric View with team tracking
+- Hybrid search with semantic similarity
+- GitHub CLI fallback for SAML repos
 
-### Phase 3 (Next)
-- LanceDB integration for vector storage
-- Hybrid search (keyword + semantic)
-- Duplicate detection with cosine similarity
-- Historical trend calculations
-- Export functionality (CSV, JSON)
-
-### Phase 4
-- Advanced roadmap visualizations
-- Customizable metrics definitions
-- Local REST API for AI tool integration
-- MCP (Model Context Protocol) server
+### Upcoming Features
+- AI-powered chat panel for natural language queries
+- Custom metric definitions
 - Webhooks for real-time updates
-
----
-
-## 📝 Development Notes
-
-### Adding a New Metric
-
-1. Add calculation logic to `src-tauri/src/metrics/calculator.rs`
-2. Add field to `DashboardMetrics` struct
-3. Update dashboard UI in `src/pages/Dashboard.tsx`
-4. Add test in `tests/rust/unit/metrics_test.rs`
-
-### Adding a New Label Type
-
-Update config in Settings UI or edit `config.json`:
-
-```json
-{
-  "custom_labels": {
-    "priority_high": ["urgent", "p1", "critical"],
-    "tech_debt": ["debt", "refactor", "cleanup"]
-  }
-}
-```
-
----
-
-## 🤝 Contributing
-
-See `PLAN.md` for the full technical specification and architecture.
-
----
-
-## 📄 License
-
-MIT
+- Advanced trend analysis with forecasting
+- Export to PDF reports
+- API integration for external tools
 
 ---
 
@@ -324,24 +307,41 @@ MIT
 - Delete `tracker.db` to reset
 
 ### "GitHub API rate limit exceeded"
-- Wait 1 hour for reset, or configure repos to sync less frequently
+- Wait 1 hour for reset
+- Install GitHub CLI (`gh`) for higher limits
 - Check rate limit: https://github.com/settings/applications
+
+### "SAML authentication required"
+- Install GitHub CLI: https://cli.github.com
+- Run: `gh auth login`
+- App will automatically use CLI for SAML repos
 
 ### "FastEmbed model not found"
 - Ensure internet connection for first download
 - Model cached at: `%LOCALAPPDATA%\fastembed`
-- Delete cache to re-download
 
 ### "Sync hangs or fails"
 - Check GitHub token is valid: Settings → Login Status
-- Verify repo names are correct: `owner/repo`
-- Check app logs: `%APPDATA%\made-activity-tracker\logs`
+- Verify repo names: `owner/repo` format
+- Check logs: `%APPDATA%\made-activity-tracker\logs`
 
 ---
 
-## 📚 Resources
+## 📚 Documentation
 
-- [Tauri Docs](https://tauri.app/)
-- [GitHub GraphQL API](https://docs.github.com/en/graphql)
-- [FastEmbed](https://github.com/Anush008/fastembed-rs)
-- [Project Plan](./PLAN.md)
+- [Quick Start Guide](./QUICK_START.md) - Get up and running quickly
+- [Build Environment](./BUILD_ENVIRONMENT.md) - Development setup
+- [Dev Workflow](./DEV_WORKFLOW.md) - Contributing guidelines
+- [Feature Specs](./specs/) - Detailed feature documentation
+
+---
+
+## 📄 License
+
+MIT
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! See feature specs in `./specs/` for planned features and architecture details.
