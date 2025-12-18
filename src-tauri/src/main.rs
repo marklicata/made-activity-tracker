@@ -82,6 +82,8 @@ fn main() {
             team::commands::remove_tracked_user,
             team::commands::get_tracked_users,
             team::commands::get_user_summary,
+            team::commands::get_user_activity_timeline,
+            team::commands::get_user_repository_distribution,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

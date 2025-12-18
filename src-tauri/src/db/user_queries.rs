@@ -1,4 +1,5 @@
 use super::models::User;
+use super::project_queries::TimelineEvent;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,18 @@ pub struct UserSummary {
     pub first_activity: Option<String>,
     pub last_activity: Option<String>,
     pub activity_status: String, // "active", "quiet", "idle"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryContribution {
+    pub repo_id: i64,
+    pub owner: String,
+    pub name: String,
+    pub pr_count: i32,
+    pub issue_count: i32,
+    pub review_count: i32,
+    pub total_contributions: i32,
+    pub percentage_of_user_work: f64,
 }
 
 // ============================================================================
@@ -180,4 +193,297 @@ pub fn get_user_summary_data(
         last_activity,
         activity_status,
     })
+}
+
+// ============================================================================
+// USER TIMELINE QUERIES
+// ============================================================================
+
+/// Get activity timeline for a user across all repositories
+pub fn get_user_activity_timeline(
+    conn: &Connection,
+    user_id: i64,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    limit: i32,
+) -> Result<Vec<TimelineEvent>> {
+    let mut events = Vec::new();
+
+    // Build date filters
+    let date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND created_at >= '{}' AND created_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND created_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND created_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    let review_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    // Fetch PR opened events
+    let pr_query = format!(
+        "SELECT pr.id, pr.number, pr.title, pr.body, pr.created_at, pr.additions, pr.deletions, pr.changed_files,
+                u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot,
+                r.owner, r.name
+         FROM pull_requests pr
+         LEFT JOIN users u ON pr.author_id = u.id
+         LEFT JOIN repositories r ON pr.repo_id = r.id
+         WHERE pr.author_id = ?1{}
+         ORDER BY pr.created_at DESC
+         LIMIT {}",
+        date_filter, limit
+    );
+
+    let mut stmt = conn.prepare(&pr_query)?;
+    let pr_iter = stmt.query_map([user_id], |row| {
+        let user = User {
+            id: row.get(8)?,
+            github_id: row.get(9)?,
+            login: row.get(10)?,
+            name: row.get(11)?,
+            avatar_url: row.get(12)?,
+            is_bot: row.get(13)?,
+        };
+
+        let metadata = serde_json::json!({
+            "pr_number": row.get::<_, i32>(1)?,
+            "additions": row.get::<_, i32>(5)?,
+            "deletions": row.get::<_, i32>(6)?,
+            "changed_files": row.get::<_, i32>(7)?,
+            "repository": format!("{}/{}", row.get::<_, String>(14)?, row.get::<_, String>(15)?),
+        });
+
+        Ok(TimelineEvent {
+            id: format!("pr-{}-opened", row.get::<_, i64>(0)?),
+            event_type: "pr_opened".to_string(),
+            timestamp: row.get(4)?,
+            author: user,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            url: None,
+            metadata,
+        })
+    })?;
+
+    for event in pr_iter {
+        events.push(event?);
+    }
+
+    // Fetch issue events
+    let issue_query = format!(
+        "SELECT i.id, i.number, i.title, i.body, i.created_at,
+                u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot,
+                r.owner, r.name
+         FROM issues i
+         LEFT JOIN users u ON i.author_id = u.id
+         LEFT JOIN repositories r ON i.repo_id = r.id
+         WHERE i.author_id = ?1{}
+         ORDER BY i.created_at DESC
+         LIMIT {}",
+        date_filter, limit
+    );
+
+    let mut stmt = conn.prepare(&issue_query)?;
+    let issue_iter = stmt.query_map([user_id], |row| {
+        let user = User {
+            id: row.get(5)?,
+            github_id: row.get(6)?,
+            login: row.get(7)?,
+            name: row.get(8)?,
+            avatar_url: row.get(9)?,
+            is_bot: row.get(10)?,
+        };
+
+        let metadata = serde_json::json!({
+            "issue_number": row.get::<_, i32>(1)?,
+            "repository": format!("{}/{}", row.get::<_, String>(11)?, row.get::<_, String>(12)?),
+        });
+
+        Ok(TimelineEvent {
+            id: format!("issue-{}-opened", row.get::<_, i64>(0)?),
+            event_type: "issue_opened".to_string(),
+            timestamp: row.get(4)?,
+            author: user,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            url: None,
+            metadata,
+        })
+    })?;
+
+    for event in issue_iter {
+        events.push(event?);
+    }
+
+    // Fetch review events
+    let review_query = format!(
+        "SELECT r.id, r.submitted_at, r.state,
+                u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot,
+                pr.number, pr.title,
+                repo.owner, repo.name
+         FROM pr_reviews r
+         JOIN pull_requests pr ON r.pr_id = pr.id
+         LEFT JOIN users u ON r.reviewer_id = u.id
+         LEFT JOIN repositories repo ON pr.repo_id = repo.id
+         WHERE r.reviewer_id = ?1{}
+         ORDER BY r.submitted_at DESC
+         LIMIT {}",
+        review_date_filter, limit
+    );
+
+    let mut stmt = conn.prepare(&review_query)?;
+    let review_iter = stmt.query_map([user_id], |row| {
+        let user = User {
+            id: row.get(3)?,
+            github_id: row.get(4)?,
+            login: row.get(5)?,
+            name: row.get(6)?,
+            avatar_url: row.get(7)?,
+            is_bot: row.get(8)?,
+        };
+
+        let metadata = serde_json::json!({
+            "pr_number": row.get::<_, i32>(9)?,
+            "review_state": row.get::<_, String>(2)?,
+            "repository": format!("{}/{}", row.get::<_, String>(11)?, row.get::<_, String>(12)?),
+        });
+
+        Ok(TimelineEvent {
+            id: format!("review-{}", row.get::<_, i64>(0)?),
+            event_type: "review".to_string(),
+            timestamp: row.get(1)?,
+            author: user,
+            title: row.get(10)?,
+            description: None,
+            url: None,
+            metadata,
+        })
+    })?;
+
+    for event in review_iter {
+        events.push(event?);
+    }
+
+    // Sort by timestamp descending
+    events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    // Apply limit
+    events.truncate(limit as usize);
+
+    Ok(events)
+}
+
+// ============================================================================
+// REPOSITORY DISTRIBUTION QUERIES
+// ============================================================================
+
+/// Get repository contribution breakdown for a user
+pub fn get_user_repo_distribution(
+    conn: &Connection,
+    user_id: i64,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<Vec<RepositoryContribution>> {
+    // Build date filters
+    let date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND created_at >= '{}' AND created_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND created_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND created_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    let review_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    // Get all repositories the user has contributed to
+    let repo_query = format!(
+        "SELECT DISTINCT repo_id, owner, name FROM (
+            SELECT pr.repo_id, r.owner, r.name
+            FROM pull_requests pr
+            JOIN repositories r ON pr.repo_id = r.id
+            WHERE pr.author_id = ?1{}
+            UNION
+            SELECT i.repo_id, r.owner, r.name
+            FROM issues i
+            JOIN repositories r ON i.repo_id = r.id
+            WHERE i.author_id = ?1{}
+            UNION
+            SELECT pr.repo_id, r.owner, r.name
+            FROM pr_reviews rev
+            JOIN pull_requests pr ON rev.pr_id = pr.id
+            JOIN repositories r ON pr.repo_id = r.id
+            WHERE rev.reviewer_id = ?1{}
+        )",
+        date_filter, date_filter, review_date_filter
+    );
+
+    let mut stmt = conn.prepare(&repo_query)?;
+    let repos: Vec<(i64, String, String)> = stmt
+        .query_map([user_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut contributions = Vec::new();
+    let mut total_work = 0;
+
+    // For each repo, count contributions
+    for (repo_id, owner, name) in repos {
+        // Count PRs
+        let pr_query = format!(
+            "SELECT COUNT(*) FROM pull_requests WHERE repo_id = ?1 AND author_id = ?2{}",
+            date_filter
+        );
+        let pr_count: i32 = conn.query_row(&pr_query, params![repo_id, user_id], |row| row.get(0))?;
+
+        // Count issues
+        let issue_query = format!(
+            "SELECT COUNT(*) FROM issues WHERE repo_id = ?1 AND author_id = ?2{}",
+            date_filter
+        );
+        let issue_count: i32 = conn.query_row(&issue_query, params![repo_id, user_id], |row| row.get(0))?;
+
+        // Count reviews
+        let review_query = format!(
+            "SELECT COUNT(*) FROM pr_reviews r
+             JOIN pull_requests pr ON r.pr_id = pr.id
+             WHERE pr.repo_id = ?1 AND r.reviewer_id = ?2{}",
+            review_date_filter
+        );
+        let review_count: i32 = conn.query_row(&review_query, params![repo_id, user_id], |row| row.get(0))?;
+
+        let total = pr_count + issue_count + review_count;
+        total_work += total;
+
+        contributions.push(RepositoryContribution {
+            repo_id,
+            owner,
+            name,
+            pr_count,
+            issue_count,
+            review_count,
+            total_contributions: total,
+            percentage_of_user_work: 0.0, // Will calculate after getting total
+        });
+    }
+
+    // Calculate percentages
+    for contrib in &mut contributions {
+        contrib.percentage_of_user_work = if total_work > 0 {
+            (contrib.total_contributions as f64 / total_work as f64) * 100.0
+        } else {
+            0.0
+        };
+    }
+
+    // Sort by total contributions descending
+    contributions.sort_by(|a, b| b.total_contributions.cmp(&a.total_contributions));
+
+    Ok(contributions)
 }

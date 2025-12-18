@@ -81,3 +81,14 @@ export interface UserSummary {
   last_activity: string | null;
   activity_status: 'active' | 'quiet' | 'idle';
 }
+
+export interface RepositoryContribution {
+  repo_id: number;
+  owner: string;
+  name: string;
+  pr_count: number;
+  issue_count: number;
+  review_count: number;
+  total_contributions: number;
+  percentage_of_user_work: number;
+}

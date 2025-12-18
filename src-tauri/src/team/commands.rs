@@ -1,4 +1,9 @@
-use crate::db::{models::User, user_queries::UserSummary, AppState};
+use crate::db::{
+    models::User,
+    project_queries::TimelineEvent,
+    user_queries::{RepositoryContribution, UserSummary},
+    AppState,
+};
 use rusqlite::params;
 use tauri::State;
 
@@ -130,4 +135,66 @@ pub async fn get_user_summary(
         end_date.as_deref(),
     )
     .map_err(|e| format!("Failed to get user summary: {}", e))
+}
+
+/// Get activity timeline for a user
+#[tauri::command]
+pub async fn get_user_activity_timeline(
+    username: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    limit: Option<i32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TimelineEvent>, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    let limit = limit.unwrap_or(100); // Default to 100 events
+
+    // Find user by username
+    let user_id: i64 = conn
+        .query_row(
+            "SELECT id FROM users WHERE login = ?1",
+            params![username],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("User '{}' not found: {}", username, e))?;
+
+    // Get user timeline
+    crate::db::user_queries::get_user_activity_timeline(
+        &conn,
+        user_id,
+        start_date.as_deref(),
+        end_date.as_deref(),
+        limit,
+    )
+    .map_err(|e| format!("Failed to get user timeline: {}", e))
+}
+
+/// Get repository distribution for a user
+#[tauri::command]
+pub async fn get_user_repository_distribution(
+    username: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<RepositoryContribution>, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    // Find user by username
+    let user_id: i64 = conn
+        .query_row(
+            "SELECT id FROM users WHERE login = ?1",
+            params![username],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("User '{}' not found: {}", username, e))?;
+
+    // Get repository distribution
+    crate::db::user_queries::get_user_repo_distribution(
+        &conn,
+        user_id,
+        start_date.as_deref(),
+        end_date.as_deref(),
+    )
+    .map_err(|e| format!("Failed to get repository distribution: {}", e))
 }
