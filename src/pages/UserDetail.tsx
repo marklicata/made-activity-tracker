@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/tauri';
 import { ChevronLeft, Loader2, GitPullRequest, MessageSquare, AlertCircle, FolderGit2 } from 'lucide-react';
-import { UserSummary, RepositoryContribution } from '@/types';
+import { UserSummary, RepositoryContribution, ActivityDataPoint, FocusMetrics } from '@/types';
 import Timeline from '@components/project/Timeline';
 import RepositoryDistribution from '@components/team/RepositoryDistribution';
+import UserActivityTrend from '@components/team/UserActivityTrend';
+import FocusAnalysis from '@components/team/FocusAnalysis';
 
 interface TimelineEvent {
   id: string;
@@ -24,6 +26,8 @@ export default function UserDetail() {
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [contributions, setContributions] = useState<RepositoryContribution[]>([]);
+  const [activityTrend, setActivityTrend] = useState<ActivityDataPoint[]>([]);
+  const [focusMetrics, setFocusMetrics] = useState<FocusMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +55,7 @@ export default function UserDetail() {
     setError(null);
 
     try {
-      const [summaryData, timelineData, contributionsData] = await Promise.all([
+      const [summaryData, timelineData, contributionsData, trendData, metricsData] = await Promise.all([
         invoke<UserSummary>('get_user_summary', {
           username,
           startDate: dateRange.start,
@@ -68,11 +72,24 @@ export default function UserDetail() {
           startDate: dateRange.start,
           endDate: dateRange.end,
         }),
+        invoke<ActivityDataPoint[]>('get_user_activity_trend', {
+          username,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+          granularity: 'week', // Weekly aggregation for 30 days
+        }),
+        invoke<FocusMetrics>('get_user_focus_metrics', {
+          username,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+        }),
       ]);
 
       setSummary(summaryData);
       setTimeline(timelineData);
       setContributions(contributionsData);
+      setActivityTrend(trendData);
+      setFocusMetrics(metricsData);
     } catch (err) {
       setError(err as string);
       console.error('Failed to load user data:', err);
@@ -209,6 +226,18 @@ export default function UserDetail() {
         {/* Repository Distribution */}
         <div className="mt-8">
           <RepositoryDistribution contributions={contributions} />
+        </div>
+
+        {/* Focus Analysis */}
+        {focusMetrics && (
+          <div className="mt-8">
+            <FocusAnalysis metrics={focusMetrics} username={username || ''} />
+          </div>
+        )}
+
+        {/* Activity Trend */}
+        <div className="mt-8">
+          <UserActivityTrend data={activityTrend} username={username || ''} />
         </div>
 
         {/* Activity Timeline */}

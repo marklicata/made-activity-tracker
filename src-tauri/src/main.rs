@@ -85,6 +85,8 @@ fn main() {
             team::commands::get_user_activity_timeline,
             team::commands::get_user_repository_distribution,
             team::commands::get_team_collaboration_matrix,
+            team::commands::get_user_activity_trend,
+            team::commands::get_user_focus_metrics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

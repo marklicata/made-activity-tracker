@@ -489,6 +489,27 @@ pub fn get_user_repo_distribution(
 }
 
 // ============================================================================
+// ACTIVITY TRENDS & FOCUS ANALYSIS
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityDataPoint {
+    pub timestamp: String,      // Date in YYYY-MM-DD format (or YYYY-MM for month, YYYY-Www for week)
+    pub pr_count: i32,
+    pub review_count: i32,
+    pub issue_count: i32,
+    pub total_activity: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FocusMetrics {
+    pub repos_touched: i32,
+    pub top_repo_percentage: f64,     // % of work in most-worked repo
+    pub concentration_score: f64,     // 0-1, higher = more focused
+    pub repos_distribution: Vec<(String, i32)>, // (repo_name, contribution_count)
+}
+
+// ============================================================================
 // COLLABORATION MATRIX QUERIES
 // ============================================================================
 
@@ -620,5 +641,172 @@ pub fn get_collaboration_matrix(
     Ok(CollaborationMatrix {
         users,
         interactions,
+    })
+}
+
+/// Get activity trend data for a user over time
+/// Granularity can be "day", "week", or "month"
+pub fn get_user_activity_trend(
+    conn: &Connection,
+    user_id: i64,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    granularity: &str,
+) -> Result<Vec<ActivityDataPoint>> {
+    // Determine date truncation based on granularity
+    let date_trunc = match granularity {
+        "week" => "strftime('%Y-W%W', created_at)",
+        "month" => "strftime('%Y-%m', created_at)",
+        _ => "date(created_at)", // default to day
+    };
+
+    let review_date_trunc = match granularity {
+        "week" => "strftime('%Y-W%W', r.submitted_at)",
+        "month" => "strftime('%Y-%m', r.submitted_at)",
+        _ => "date(r.submitted_at)",
+    };
+
+    // Build date filters
+    let pr_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND created_at >= '{}' AND created_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND created_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND created_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    let review_date_filter = match (start_date, end_date) {
+        (Some(start), Some(end)) => format!(" AND r.submitted_at >= '{}' AND r.submitted_at <= '{}'", start, end),
+        (Some(start), None) => format!(" AND r.submitted_at >= '{}'", start),
+        (None, Some(end)) => format!(" AND r.submitted_at <= '{}'", end),
+        (None, None) => String::new(),
+    };
+
+    // Query PRs grouped by time period
+    let pr_query = format!(
+        "SELECT {} as period, COUNT(*) as count
+         FROM pull_requests
+         WHERE author_id = ?1{}
+         GROUP BY period
+         ORDER BY period",
+        date_trunc, pr_date_filter
+    );
+
+    let mut pr_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut stmt = conn.prepare(&pr_query)?;
+    let pr_iter = stmt.query_map([user_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)))?;
+    for result in pr_iter {
+        let (period, count) = result?;
+        pr_counts.insert(period, count);
+    }
+
+    // Query reviews grouped by time period
+    let review_query = format!(
+        "SELECT {} as period, COUNT(*) as count
+         FROM pr_reviews r
+         WHERE r.reviewer_id = ?1{}
+         GROUP BY period
+         ORDER BY period",
+        review_date_trunc, review_date_filter
+    );
+
+    let mut review_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut stmt = conn.prepare(&review_query)?;
+    let review_iter = stmt.query_map([user_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)))?;
+    for result in review_iter {
+        let (period, count) = result?;
+        review_counts.insert(period, count);
+    }
+
+    // Query issues grouped by time period
+    let issue_query = format!(
+        "SELECT {} as period, COUNT(*) as count
+         FROM issues
+         WHERE author_id = ?1{}
+         GROUP BY period
+         ORDER BY period",
+        date_trunc, pr_date_filter
+    );
+
+    let mut issue_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut stmt = conn.prepare(&issue_query)?;
+    let issue_iter = stmt.query_map([user_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)))?;
+    for result in issue_iter {
+        let (period, count) = result?;
+        issue_counts.insert(period, count);
+    }
+
+    // Combine all periods
+    let mut all_periods: std::collections::HashSet<String> = std::collections::HashSet::new();
+    all_periods.extend(pr_counts.keys().cloned());
+    all_periods.extend(review_counts.keys().cloned());
+    all_periods.extend(issue_counts.keys().cloned());
+
+    let mut data_points: Vec<ActivityDataPoint> = all_periods
+        .into_iter()
+        .map(|period| {
+            let pr_count = *pr_counts.get(&period).unwrap_or(&0);
+            let review_count = *review_counts.get(&period).unwrap_or(&0);
+            let issue_count = *issue_counts.get(&period).unwrap_or(&0);
+            ActivityDataPoint {
+                timestamp: period,
+                pr_count,
+                review_count,
+                issue_count,
+                total_activity: pr_count + review_count + issue_count,
+            }
+        })
+        .collect();
+
+    // Sort by timestamp
+    data_points.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+    Ok(data_points)
+}
+
+/// Get focus metrics for a user showing repository concentration
+pub fn get_user_focus_metrics(
+    conn: &Connection,
+    user_id: i64,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<FocusMetrics> {
+    // Reuse the repository distribution function
+    let contributions = get_user_repo_distribution(conn, user_id, start_date, end_date)?;
+
+    if contributions.is_empty() {
+        return Ok(FocusMetrics {
+            repos_touched: 0,
+            top_repo_percentage: 0.0,
+            concentration_score: 0.0,
+            repos_distribution: vec![],
+        });
+    }
+
+    let repos_touched = contributions.len() as i32;
+    let top_repo_percentage = contributions[0].percentage_of_user_work;
+
+    // Calculate concentration score using Herfindahl-Hirschman Index (HHI)
+    // HHI = sum of squares of market shares (here, percentage of work)
+    // Result is 0-1, where 1 = all work in one repo (highly focused)
+    let hhi: f64 = contributions
+        .iter()
+        .map(|c| {
+            let share = c.percentage_of_user_work / 100.0;
+            share * share
+        })
+        .sum();
+
+    // Create simplified distribution for display
+    let repos_distribution: Vec<(String, i32)> = contributions
+        .iter()
+        .take(10) // Top 10 repos
+        .map(|c| (format!("{}/{}", c.owner, c.name), c.total_contributions))
+        .collect();
+
+    Ok(FocusMetrics {
+        repos_touched,
+        top_repo_percentage,
+        concentration_score: hhi,
+        repos_distribution,
     })
 }

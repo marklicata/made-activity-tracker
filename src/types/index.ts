@@ -102,3 +102,18 @@ export interface CollaborationMatrix {
   users: User[];
   interactions: Record<string, Record<string, InteractionStats>>;
 }
+
+export interface ActivityDataPoint {
+  timestamp: string;
+  pr_count: number;
+  review_count: number;
+  issue_count: number;
+  total_activity: number;
+}
+
+export interface FocusMetrics {
+  repos_touched: number;
+  top_repo_percentage: number;
+  concentration_score: number;
+  repos_distribution: [string, number][]; // [repo_name, contribution_count]
+}

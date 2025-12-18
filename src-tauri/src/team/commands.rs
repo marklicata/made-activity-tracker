@@ -1,7 +1,7 @@
 use crate::db::{
     models::User,
     project_queries::TimelineEvent,
-    user_queries::{CollaborationMatrix, RepositoryContribution, UserSummary},
+    user_queries::{ActivityDataPoint, CollaborationMatrix, FocusMetrics, RepositoryContribution, UserSummary},
     AppState,
 };
 use rusqlite::params;
@@ -237,4 +237,64 @@ pub async fn get_team_collaboration_matrix(
         end_date.as_deref(),
     )
     .map_err(|e| format!("Failed to get collaboration matrix: {}", e))
+}
+
+/// Get activity trend for a user over time
+#[tauri::command]
+pub async fn get_user_activity_trend(
+    username: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    granularity: String, // "day", "week", "month"
+    state: State<'_, AppState>,
+) -> Result<Vec<ActivityDataPoint>, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    // Find user by username
+    let user_id: i64 = conn
+        .query_row(
+            "SELECT id FROM users WHERE login = ?1",
+            params![username],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("User '{}' not found: {}", username, e))?;
+
+    // Get activity trend
+    crate::db::user_queries::get_user_activity_trend(
+        &conn,
+        user_id,
+        start_date.as_deref(),
+        end_date.as_deref(),
+        &granularity,
+    )
+    .map_err(|e| format!("Failed to get activity trend: {}", e))
+}
+
+/// Get focus metrics for a user
+#[tauri::command]
+pub async fn get_user_focus_metrics(
+    username: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<FocusMetrics, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    // Find user by username
+    let user_id: i64 = conn
+        .query_row(
+            "SELECT id FROM users WHERE login = ?1",
+            params![username],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("User '{}' not found: {}", username, e))?;
+
+    // Get focus metrics
+    crate::db::user_queries::get_user_focus_metrics(
+        &conn,
+        user_id,
+        start_date.as_deref(),
+        end_date.as_deref(),
+    )
+    .map_err(|e| format!("Failed to get focus metrics: {}", e))
 }
