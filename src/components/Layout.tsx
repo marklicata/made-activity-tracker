@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Folder,
+  Github,
   Users,
   Map,
   Search,
@@ -15,7 +15,7 @@ import clsx from 'clsx';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projects', icon: Folder, label: 'Projects' },
+  { to: '/projects', icon: Github, label: 'Projects' },
   { to: '/team', icon: Users, label: 'Team' },
   { to: '/roadmap', icon: Map, label: 'Roadmap' },
   { to: '/search', icon: Search, label: 'Search' },
@@ -79,7 +79,7 @@ export default function Layout() {
           </button>
           {lastSyncAt && (
             <p className="text-xs text-gray-500 text-center mt-2">
-              Last synced: {new Date(lastSyncAt).toLocaleTimeString()}
+              Last full sync: {new Date(lastSyncAt).toLocaleString()}
             </p>
           )}
         </div>
