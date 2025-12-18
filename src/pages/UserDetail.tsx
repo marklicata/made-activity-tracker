@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/tauri';
-import { ChevronLeft, Loader2, GitPullRequest, MessageSquare, AlertCircle, FolderGit2 } from 'lucide-react';
+import { ChevronLeft, Loader2, GitPullRequest, MessageSquare, AlertCircle, FolderGit2, Download } from 'lucide-react';
 import { UserSummary, RepositoryContribution, ActivityDataPoint, FocusMetrics } from '@/types';
 import Timeline from '@components/project/Timeline';
 import RepositoryDistribution from '@components/team/RepositoryDistribution';
 import UserActivityTrend from '@components/team/UserActivityTrend';
 import FocusAnalysis from '@components/team/FocusAnalysis';
+import DateRangeFilter from '@components/common/DateRangeFilter';
+import { exportUserToCSV } from '@/utils/export';
 
 interface TimelineEvent {
   id: string;
@@ -32,7 +34,7 @@ export default function UserDetail() {
   const [error, setError] = useState<string | null>(null);
 
   // Date range - default to last 30 days
-  const [dateRange] = useState(() => {
+  const [dateRange, setDateRange] = useState(() => {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
@@ -47,6 +49,23 @@ export default function UserDetail() {
       loadUserData();
     }
   }, [username]);
+
+  // Reload data when date range changes
+  useEffect(() => {
+    if (username && !loading) {
+      loadUserData();
+    }
+  }, [dateRange]);
+
+  const handleDateRangeChange = (start: string, end: string) => {
+    setDateRange({ start, end });
+  };
+
+  const handleExport = () => {
+    if (summary) {
+      exportUserToCSV(summary, dateRange);
+    }
+  };
 
   const loadUserData = async () => {
     if (!username) return;
@@ -155,6 +174,26 @@ export default function UserDetail() {
 
       {/* User Header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        {/* Date Range Filter and Export */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="lg:col-span-2">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export to CSV
+            </button>
+          </div>
+          <div>
+            <DateRangeFilter
+              startDate={dateRange.start}
+              endDate={dateRange.end}
+              onDateRangeChange={handleDateRangeChange}
+            />
+          </div>
+        </div>
+
         <div className="bg-white shadow rounded-lg p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
