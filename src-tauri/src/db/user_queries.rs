@@ -150,7 +150,8 @@ pub fn get_user_summary_data(
     let activity_status = if let Some(ref last) = last_activity {
         if let Ok(last_date) = chrono::DateTime::parse_from_rfc3339(last) {
             let now = chrono::Utc::now();
-            let days_since = (now - last_date).num_days();
+            let last_date_utc = last_date.with_timezone(&chrono::Utc);
+            let days_since = (now - last_date_utc).num_days();
 
             // Count recent activity (last 7 days)
             let recent_activity_query = format!(
