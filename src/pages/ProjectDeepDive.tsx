@@ -210,10 +210,10 @@ export default function ProjectDeepDive() {
       <div className="flex flex-col items-center justify-center h-screen">
         <p className="text-red-500 text-lg">{error}</p>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/projects')}
           className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
-          Back to Dashboard
+          Back to Projects
         </button>
       </div>
     );
@@ -229,14 +229,14 @@ export default function ProjectDeepDive() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/projects')}
             className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
           >
             <ChevronLeft className="w-4 h-4 mr-1" />
-            <span className="text-sm">Back to Dashboard</span>
+            <span className="text-sm">Back to Projects</span>
           </button>
           <div className="flex items-center text-sm text-gray-500 mt-2">
-            <span>Dashboard</span>
+            <span>Projects</span>
             <span className="mx-2">/</span>
             <span className="text-gray-900 font-medium">
               {owner}/{repo}
