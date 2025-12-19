@@ -1,6 +1,6 @@
 [package]
 name = "made-activity-tracker"
-version = "0.1.0"
+version = "1.0.0"
 description = "Metrics for Activity, Delivery & Efficiency - GitHub team activity tracker"
 authors = ["Your Team"]
 license = "MIT"

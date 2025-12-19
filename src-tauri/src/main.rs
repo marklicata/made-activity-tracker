@@ -151,6 +151,8 @@ fn main() {
             // AI commands
             ai::commands::send_chat_message,
             ai::commands::check_amplifier_health,
+            ai::commands::check_api_keys,
+            ai::commands::set_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

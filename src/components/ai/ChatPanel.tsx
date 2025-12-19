@@ -1,18 +1,51 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
 import { useChatStore } from '../../stores/chatStore';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import ChatSuggestions from './ChatSuggestions';
+import ApiKeySetup from './ApiKeySetup';
 import { X, MessageSquare, Trash2 } from 'lucide-react';
+
+interface ApiKeyStatus {
+  has_anthropic: boolean;
+  has_openai: boolean;
+}
 
 const ChatPanel: React.FC = () => {
   const { isOpen, messages, isLoading, error, setOpen, clearMessages } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [needsApiKey, setNeedsApiKey] = useState(false);
+  const [checkingKeys, setCheckingKeys] = useState(true);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Check for API keys when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      checkApiKeys();
+    }
+  }, [isOpen]);
+
+  const checkApiKeys = async () => {
+    setCheckingKeys(true);
+    try {
+      const status = await invoke<ApiKeyStatus>('check_api_keys');
+      setNeedsApiKey(!status.has_anthropic && !status.has_openai);
+    } catch (err) {
+      console.error('Failed to check API keys:', err);
+      setNeedsApiKey(true);
+    } finally {
+      setCheckingKeys(false);
+    }
+  };
+
+  const handleApiKeyComplete = () => {
+    setNeedsApiKey(false);
+  };
 
   if (!isOpen) return null;
 
@@ -27,7 +60,7 @@ const ChatPanel: React.FC = () => {
           <h2 className="text-lg font-semibold text-white">AI Assistant</h2>
         </div>
         <div className="flex items-center gap-2">
-          {messages.length > 0 && (
+          {messages.length > 0 && !needsApiKey && (
             <button
               onClick={clearMessages}
               className="p-2 hover:bg-gray-800 rounded transition-colors"
@@ -45,31 +78,45 @@ const ChatPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
-          <ChatSuggestions />
-        ) : (
-          messages.map((message, index) => (
-            <ChatMessage key={`${message.timestamp}-${index}`} message={message} />
-          ))
-        )}
-        {isLoading && (
+      {/* Content */}
+      {checkingKeys ? (
+        <div className="flex-1 flex items-center justify-center">
           <div className="flex items-center gap-2 text-gray-400">
-            <div className="animate-spin w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" />
-            <span>Thinking...</span>
+            <div className="animate-spin w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full" />
+            <span>Checking setup...</span>
           </div>
-        )}
-        {error && (
-          <div className="p-3 bg-red-900/20 border border-red-700 rounded text-red-400 text-sm">
-            Error: {error}
+        </div>
+      ) : needsApiKey ? (
+        <ApiKeySetup onComplete={handleApiKeyComplete} />
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 ? (
+              <ChatSuggestions />
+            ) : (
+              messages.map((message, index) => (
+                <ChatMessage key={`${message.timestamp}-${index}`} message={message} />
+              ))
+            )}
+            {isLoading && (
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="animate-spin w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" />
+                <span>Thinking...</span>
+              </div>
+            )}
+            {error && (
+              <div className="p-3 bg-red-900/20 border border-red-700 rounded text-red-400 text-sm">
+                Error: {error}
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Input */}
-      <ChatInput />
+          {/* Input */}
+          <ChatInput />
+        </>
+      )}
     </div>
   );
 };

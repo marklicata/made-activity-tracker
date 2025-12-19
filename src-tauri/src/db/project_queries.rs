@@ -662,9 +662,7 @@ pub fn get_lifecycle_metrics(
 
     // Calculate time to merge for merged PRs (in hours)
     let merge_time_query = format!(
-        "SELECT
-            AVG((julianday(merged_at) - julianday(created_at)) * 24) as avg_hours,
-            (julianday(merged_at) - julianday(created_at)) * 24 as hours
+        "SELECT (julianday(merged_at) - julianday(created_at)) * 24 as hours
          FROM pull_requests
          WHERE repo_id = ?1 AND merged_at IS NOT NULL{}
          ORDER BY hours",
@@ -676,7 +674,7 @@ pub fn get_lifecycle_metrics(
     let mut avg_time_to_merge = 0.0;
 
     let time_rows = stmt.query_map([repo_id], |row| {
-        Ok(row.get::<_, f64>(1)?)
+        Ok(row.get::<_, f64>(0)?)
     })?;
 
     for time in time_rows {

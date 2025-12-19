@@ -81,17 +81,27 @@ impl AmplifierSidecar {
         // In development, use venv Python
         if cfg!(debug_assertions) {
             let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            let python_path = PathBuf::from(manifest_dir)
+            let venv_dir = PathBuf::from(manifest_dir)
                 .join("amplifier-tools")
-                .join(".venv")
-                .join(if cfg!(windows) { "Scripts" } else { "bin" })
-                .join(if cfg!(windows) { "python.exe" } else { "python" });
+                .join(".venv");
 
-            if !python_path.exists() {
-                return Err(anyhow!("Python venv not found at {:?}. Run 'uv venv' in amplifier-tools/", python_path));
+            // Try Windows path first (Scripts/python.exe)
+            let windows_python = venv_dir.join("Scripts").join("python.exe");
+            if windows_python.exists() {
+                return Ok(windows_python.to_string_lossy().to_string());
             }
 
-            Ok(python_path.to_string_lossy().to_string())
+            // Try Unix/WSL path (bin/python)
+            let unix_python = venv_dir.join("bin").join("python");
+            if unix_python.exists() {
+                return Ok(unix_python.to_string_lossy().to_string());
+            }
+
+            // Neither found
+            Err(anyhow!(
+                "Python venv not found. Tried:\n  - {:?}\n  - {:?}\nRun 'uv venv' in amplifier-tools/",
+                windows_python, unix_python
+            ))
         } else {
             // In production, use bundled Python
             Ok("python".to_string())
