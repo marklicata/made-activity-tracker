@@ -1,55 +1,110 @@
 use crate::db::{
     models::User,
     project_queries::TimelineEvent,
+    queries,
     user_queries::{ActivityDataPoint, CollaborationMatrix, FocusMetrics, RepositoryContribution, UserSummary},
     AppState,
 };
+use crate::github::auth;
+use reqwest::Client;
 use rusqlite::params;
-use tauri::State;
+use serde::Deserialize;
+use tauri::{Manager, State};
 
 /// Add a user to the tracked users list
 #[tauri::command]
 pub async fn add_tracked_user(
     username: String,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<User, String> {
+    let token = auth::get_token()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Not authenticated".to_string())?;
+
+    // Try to find the user locally first
+    let user_exists = {
+        let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+        queries::get_user_by_login(&conn, &username)
+            .map_err(|e| e.to_string())?
+    };
+
+    // If not found locally, fetch from GitHub
+    let gh_user = if user_exists.is_none() {
+        Some(fetch_github_user(&username, &token).await?)
+    } else {
+        None
+    };
+
+    // Now do all database operations without holding lock across await
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
-    // First, find the user by username
-    let user: User = conn
-        .query_row(
-            "SELECT id, github_id, login, name, avatar_url, is_bot FROM users WHERE login = ?1",
-            params![username],
-            |row| {
-                Ok(User {
-                    id: row.get(0)?,
-                    github_id: row.get(1)?,
-                    login: row.get(2)?,
-                    name: row.get(3)?,
-                    avatar_url: row.get(4)?,
-                    is_bot: row.get(5)?,
-                })
-            },
+    // Insert fetched user if needed
+    if let Some(gh_user) = gh_user {
+        let _ = queries::get_or_create_user(
+            &conn,
+            gh_user.id,
+            &gh_user.login,
+            gh_user.name.as_deref(),
+            Some(&gh_user.avatar_url),
+            false,
         )
-        .map_err(|e| format!("User '{}' not found in database: {}. Please sync repositories that include this user first.", username, e))?;
-
-    // Add to tracked_users (will fail silently if already exists due to UNIQUE constraint)
-    let now = chrono::Utc::now().to_rfc3339();
-    match conn.execute(
-        "INSERT INTO tracked_users (user_id, added_at) VALUES (?1, ?2)",
-        params![user.id, now],
-    ) {
-        Ok(_) => {
-            tracing::info!("Added user '{}' to tracked users", username);
-            Ok(user)
-        }
-        Err(rusqlite::Error::SqliteFailure(err, _)) if err.extended_code == 2067 => {
-            // UNIQUE constraint failed - user already tracked
-            tracing::debug!("User '{}' is already tracked", username);
-            Ok(user)
-        }
-        Err(e) => Err(format!("Failed to add tracked user: {}", e)),
+        .map_err(|e| e.to_string())?;
     }
+
+    // Get the user (either existing or just created)
+    let user = queries::get_user_by_login(&conn, &username)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("User '{}' not found", username))?;
+
+    // Mark user as tracked in users table (idempotent)
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE users SET tracked = 1, tracked_at = COALESCE(tracked_at, ?2) WHERE id = ?1",
+        params![user.id, now],
+    )
+    .map_err(|e| format!("Failed to mark user tracked: {}", e))?;
+
+    // Drop the connection before returning
+    drop(conn);
+
+    Ok(user)
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubUserResponse {
+    id: i64,
+    login: String,
+    name: Option<String>,
+    avatar_url: String,
+}
+
+async fn fetch_github_user(username: &str, token: &str) -> Result<GithubUserResponse, String> {
+    let client = Client::new();
+    let url = format!("https://api.github.com/users/{}", username);
+
+    let response = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "MADE-Activity-Tracker")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to call GitHub: {}", e))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(format!("GitHub user '{}' not found", username));
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub API error ({}): {}", status, body));
+    }
+
+    response
+        .json::<GithubUserResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GitHub user response: {}", e))
 }
 
 /// Remove a user from the tracked users list
@@ -60,10 +115,10 @@ pub async fn remove_tracked_user(
 ) -> Result<(), String> {
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
-    // Find user by username, then delete from tracked_users
+    // Unmark user as tracked in users table
     let rows_affected = conn
         .execute(
-            "DELETE FROM tracked_users WHERE user_id = (SELECT id FROM users WHERE login = ?1)",
+            "UPDATE users SET tracked = 0, tracked_at = NULL WHERE login = ?1 AND tracked = 1",
             params![username],
         )
         .map_err(|e| format!("Failed to remove tracked user: {}", e))?;
@@ -83,10 +138,10 @@ pub async fn get_tracked_users(state: State<'_, AppState>) -> Result<Vec<User>, 
 
     let mut stmt = conn
         .prepare(
-            "SELECT u.id, u.github_id, u.login, u.name, u.avatar_url, u.is_bot
-             FROM tracked_users t
-             JOIN users u ON t.user_id = u.id
-             ORDER BY t.added_at DESC",
+            "SELECT id, github_id, login, name, avatar_url, is_bot, tracked, tracked_at
+             FROM users
+             WHERE tracked = 1
+             ORDER BY tracked_at DESC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -99,6 +154,8 @@ pub async fn get_tracked_users(state: State<'_, AppState>) -> Result<Vec<User>, 
                 name: row.get(3)?,
                 avatar_url: row.get(4)?,
                 is_bot: row.get(5)?,
+                tracked: row.get(6)?,
+                tracked_at: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?

@@ -151,10 +151,16 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
                 closedAt
                 author {
                     login
+                    ... on User {
+                        databaseId
+                    }
                 }
                 assignees(first: 1) {
                     nodes {
                         login
+                        ... on User {
+                            databaseId
+                        }
                     }
                 }
                 labels(first: 20) {
@@ -164,6 +170,7 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
                 }
                 milestone {
                     id
+                    databaseId
                     number
                     title
                 }
@@ -198,6 +205,9 @@ query($owner: String!, $name: String!, $cursor: String) {
                 changedFiles
                 author {
                     login
+                    ... on User {
+                        databaseId
+                    }
                 }
                 labels(first: 20) {
                     nodes {
@@ -212,6 +222,9 @@ query($owner: String!, $name: String!, $cursor: String) {
                         submittedAt
                         author {
                             login
+                            ... on User {
+                                databaseId
+                            }
                         }
                     }
                 }
@@ -228,6 +241,7 @@ query($owner: String!, $name: String!) {
         milestones(first: 100, orderBy: {field: DUE_DATE, direction: ASC}) {
             nodes {
                 id
+                databaseId
                 number
                 title
                 description
@@ -367,6 +381,7 @@ pub struct MilestoneConnection {
 #[serde(rename_all = "camelCase")]
 pub struct MilestoneNode {
     pub id: String,
+    pub database_id: i64,
     pub number: i32,
     pub title: String,
     pub description: Option<String>,
@@ -394,8 +409,10 @@ pub struct PageInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub login: String,
+    pub database_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -417,6 +434,7 @@ pub struct LabelNode {
 #[serde(rename_all = "camelCase")]
 pub struct MilestoneRef {
     pub id: String,
+    pub database_id: i64,
     pub number: i32,
     pub title: String,
 }

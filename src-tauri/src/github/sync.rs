@@ -257,22 +257,32 @@ async fn sync_issues(
     excluded_bots: &[String],
 ) -> Result<()> {
     tracing::info!("Syncing issues for {}/{}", owner, name);
-    
+
     // Record sync start
     let log_id = {
         let conn = state.sqlite.lock().unwrap();
         queries::record_sync_start(&conn, repo_id, "issues")?
     };
-    
+
+    // Compute watermark-based 'since' for incremental sync
+    let watermark_since = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::get_issues_watermark(&conn, repo_id)?
+    };
+
+    // Use watermark if available, otherwise fall back to provided since
+    let effective_since = watermark_since.as_deref().unwrap_or(since);
+    tracing::info!("Using since={} for issues (watermark: {:?})", effective_since, watermark_since);
+
     let mut cursor: Option<String> = None;
     let mut total_synced = 0;
-    
+
     loop {
         let variables = serde_json::json!({
             "owner": owner,
             "name": name,
             "cursor": cursor,
-            "since": since
+            "since": effective_since
         });
 
         let response: IssuesResponse = match graphql::execute_query(token, ISSUES_QUERY, variables).await {
@@ -302,17 +312,24 @@ async fn sync_issues(
             
             // Get or create author
             let author_id = if let Some(author) = &issue_node.author {
-                let conn = state.sqlite.lock().unwrap();
-                // We don't have full user info from issues query, so use placeholder
-                Some(queries::get_or_create_user(&conn, 0, &author.login, None, None, false)?)
+                if let Some(github_id) = author.database_id {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, false)?)
+                } else {
+                    None
+                }
             } else {
                 None
             };
             
             // Get assignee
             let assignee_id = if let Some(assignee) = issue_node.assignees.nodes.first() {
-                let conn = state.sqlite.lock().unwrap();
-                Some(queries::get_or_create_user(&conn, 0, &assignee.login, None, None, false)?)
+                if let Some(github_id) = assignee.database_id {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, github_id, &assignee.login, None, None, false)?)
+                } else {
+                    None
+                }
             } else {
                 None
             };
@@ -320,7 +337,7 @@ async fn sync_issues(
             // Get milestone ID
             let milestone_id = if let Some(milestone) = &issue_node.milestone {
                 let conn = state.sqlite.lock().unwrap();
-                queries::get_milestone_id_by_github_id(&conn, milestone.number as i64)?
+                queries::get_milestone_id_by_github_id(&conn, milestone.database_id)?
             } else {
                 None
             };
@@ -348,6 +365,7 @@ async fn sync_issues(
                     &issue_node.updated_at,
                     issue_node.closed_at.as_deref(),
                     &labels,
+                    &issue_node.updated_at, // Use updated_at as sync_updated_at
                 )?;
             }
             
@@ -380,15 +398,22 @@ async fn sync_pull_requests(
     excluded_bots: &[String],
 ) -> Result<()> {
     tracing::info!("Syncing PRs for {}/{}", owner, name);
-    
+
     let log_id = {
         let conn = state.sqlite.lock().unwrap();
         queries::record_sync_start(&conn, repo_id, "pull_requests")?
     };
-    
+
+    // Get watermark for PRs (note: PRs query doesn't support 'since' filter like issues, so we rely on upsert guards)
+    let watermark = {
+        let conn = state.sqlite.lock().unwrap();
+        queries::get_prs_watermark(&conn, repo_id)?
+    };
+    tracing::info!("PR watermark for {}/{}: {:?}", owner, name, watermark);
+
     let mut cursor: Option<String> = None;
     let mut total_synced = 0;
-    
+
     loop {
         let variables = serde_json::json!({
             "owner": owner,
@@ -423,8 +448,12 @@ async fn sync_pull_requests(
             
             // Get or create author
             let author_id = if let Some(author) = &pr_node.author {
-                let conn = state.sqlite.lock().unwrap();
-                Some(queries::get_or_create_user(&conn, 0, &author.login, None, None, false)?)
+                if let Some(github_id) = author.database_id {
+                    let conn = state.sqlite.lock().unwrap();
+                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, false)?)
+                } else {
+                    None
+                }
             } else {
                 None
             };
@@ -454,14 +483,19 @@ async fn sync_pull_requests(
                     pr_node.deletions,
                     pr_node.changed_files,
                     &labels,
+                    &pr_node.updated_at, // Use updated_at as sync_updated_at
                 )?
             };
             
             // Sync reviews for this PR
             for review in &pr_node.reviews.nodes {
                 let reviewer_id = if let Some(author) = &review.author {
-                    let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, 0, &author.login, None, None, false)?)
+                    if let Some(github_id) = author.database_id {
+                        let conn = state.sqlite.lock().unwrap();
+                        Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, false)?)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 };
@@ -475,6 +509,7 @@ async fn sync_pull_requests(
                         reviewer_id,
                         &review.state,
                         submitted_at,
+                        submitted_at, // Use submitted_at as sync_updated_at for reviews
                     )?;
                 }
             }
@@ -539,7 +574,7 @@ async fn sync_milestones(
         let conn = state.sqlite.lock().unwrap();
         queries::upsert_milestone(
             &conn,
-            milestone.number as i64,
+            milestone.database_id,
             repo_id,
             &milestone.title,
             milestone.description.as_deref(),
@@ -612,7 +647,7 @@ async fn sync_issues_rest_fallback(
                 // Get milestone ID
                 let milestone_id = if let Some(milestone) = &issue.milestone {
                     let conn = state.sqlite.lock().unwrap();
-                    queries::get_milestone_id_by_github_id(&conn, milestone.number as i64)?
+                    queries::get_milestone_id_by_github_id(&conn, milestone.id)?
                 } else {
                     None
                 };
@@ -638,6 +673,7 @@ async fn sync_issues_rest_fallback(
                         &issue.updated_at,
                         issue.closed_at.as_deref(),
                         &labels,
+                        &issue.updated_at, // Use updated_at as sync_updated_at
                     )?;
                 }
 
@@ -719,6 +755,7 @@ async fn sync_pull_requests_rest_fallback(
                         pr.deletions.unwrap_or(0),
                         pr.changed_files.unwrap_or(0),
                         &labels,
+                        &pr.updated_at, // Use updated_at as sync_updated_at
                     )?;
                 }
 
@@ -764,7 +801,7 @@ async fn sync_milestones_rest_fallback(
                 let conn = state.sqlite.lock().unwrap();
                 queries::upsert_milestone(
                     &conn,
-                    milestone.number as i64,
+                    milestone.id,
                     repo_id,
                     &milestone.title,
                     milestone.description.as_deref(),
@@ -847,6 +884,7 @@ async fn sync_issues_cli_fallback(
                     &issue.updated_at,
                     issue.closed_at.as_deref(),
                     &issue.labels,
+                    &issue.updated_at, // Use updated_at as sync_updated_at
                 )?;
 
                 total_synced += 1;
@@ -875,7 +913,7 @@ async fn sync_pull_requests_cli_fallback(
     repo_id: i64,
     owner: &str,
     name: &str,
-    _excluded_bots: &[String],
+    excluded_bots: &[String],
 ) -> Result<()> {
     tracing::info!("🔧 Using GitHub CLI fallback for PRs in {}/{}", owner, name);
 
@@ -901,33 +939,71 @@ async fn sync_pull_requests_cli_fallback(
         return Ok(()); // Don't fail the entire sync
     }
 
-    match cli.fetch_pull_requests(owner, name).await {
-        Ok(mut prs) => {
+    match cli.fetch_pull_requests_with_authors(owner, name).await {
+        Ok(pr_data) => {
             let mut total_synced = 0;
 
-            for pr in &mut prs {
-                pr.repo_id = repo_id;
+            for (cli_pr, author_login) in pr_data {
+                // Skip bot authors
+                if let Some(ref login) = author_login {
+                    if is_bot_user(login, excluded_bots) {
+                        continue;
+                    }
+                }
 
-                // Upsert PR (author ID will be resolved later)
-                let conn = state.sqlite.lock().unwrap();
-                queries::upsert_pull_request(
-                    &conn,
-                    pr.github_id,
-                    repo_id,
-                    pr.number,
-                    &pr.title,
-                    pr.body.as_deref(),
-                    &pr.state,
-                    pr.author_id,
-                    &pr.created_at,
-                    &pr.updated_at,
-                    pr.merged_at.as_deref(),
-                    pr.closed_at.as_deref(),
-                    pr.additions,
-                    pr.deletions,
-                    pr.changed_files,
-                    &pr.labels,
-                )?;
+                // Try to find author by login in database
+                let author_id = if let Some(login) = author_login {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::get_user_by_login(&conn, &login)
+                        .ok()
+                        .flatten()
+                        .map(|u| u.id)
+                } else {
+                    None
+                };
+
+                // Upsert PR
+                let pr_id = {
+                    let conn = state.sqlite.lock().unwrap();
+                    queries::upsert_pull_request(
+                        &conn,
+                        cli_pr.github_id,
+                        repo_id,
+                        cli_pr.number,
+                        &cli_pr.title,
+                        cli_pr.body.as_deref(),
+                        &cli_pr.state,
+                        author_id,
+                        &cli_pr.created_at,
+                        &cli_pr.updated_at,
+                        cli_pr.merged_at.as_deref(),
+                        cli_pr.closed_at.as_deref(),
+                        cli_pr.additions,
+                        cli_pr.deletions,
+                        cli_pr.changed_files,
+                        &cli_pr.labels,
+                        &cli_pr.updated_at, // Use updated_at as sync_updated_at
+                    )?
+                };
+
+                // Fetch and sync PR reviews
+                if let Ok(reviews) = cli.fetch_pr_reviews(owner, name, cli_pr.number).await {
+                    for review in reviews {
+                        // Try to find reviewer in database (reviews don't include GitHub IDs via CLI)
+                        let reviewer_id = None; // Would need REST API call to get reviewer GitHub ID
+                        
+                        let conn = state.sqlite.lock().unwrap();
+                        queries::upsert_pr_review(
+                            &conn,
+                            review.github_id,
+                            pr_id,
+                            reviewer_id,
+                            &review.state,
+                            &review.submitted_at,
+                            &review.submitted_at, // Use submitted_at as sync_updated_at for reviews
+                        ).ok(); // Ignore errors for individual reviews
+                    }
+                }
 
                 total_synced += 1;
             }

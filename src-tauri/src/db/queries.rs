@@ -114,42 +114,61 @@ pub fn get_or_create_user(
     login: &str,
     name: Option<&str>,
     avatar_url: Option<&str>,
-    is_bot: bool,
+    is_bot: Option<bool>,
+    tracked: Option<bool>,
+    tracked_at: Option<&str>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO users (github_id, login, name, avatar_url, is_bot)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO users (github_id, login, name, avatar_url, is_bot, tracked, tracked_at)
+         VALUES (?1, ?2, ?3, ?4, COALESCE(?5, FALSE), COALESCE(?6, FALSE), ?7)
          ON CONFLICT(github_id) DO UPDATE SET
             login = excluded.login,
             name = COALESCE(excluded.name, name),
-            avatar_url = COALESCE(excluded.avatar_url, avatar_url)",
-        params![github_id, login, name, avatar_url, is_bot],
+            avatar_url = COALESCE(excluded.avatar_url, avatar_url),
+            is_bot = COALESCE(excluded.is_bot, is_bot),
+            tracked = COALESCE(excluded.tracked, tracked),
+            tracked_at = COALESCE(excluded.tracked_at, tracked_at)",
+        params![
+            github_id,
+            login,
+            name,
+            avatar_url,
+            is_bot,
+            tracked,
+            tracked_at,
+        ],
     )?;
-    
+
     let id: i64 = conn.query_row(
         "SELECT id FROM users WHERE github_id = ?1",
         params![github_id],
         |row| row.get(0),
     )?;
-    
+
     Ok(id)
 }
 
 /// Get user by login (for looking up by username)
 pub fn get_user_by_login(conn: &Connection, login: &str) -> Result<Option<User>> {
-    let result = conn.query_row(
-        "SELECT id, github_id, login, name, avatar_url, is_bot FROM users WHERE login = ?1",
-        params![login],
-        |row| Ok(User {
-            id: row.get(0)?,
-            github_id: row.get(1)?,
-            login: row.get(2)?,
-            name: row.get(3)?,
-            avatar_url: row.get(4)?,
-            is_bot: row.get(5)?,
-        }),
-    ).optional()?;
-    
+    let result = conn
+        .query_row(
+            "SELECT id, github_id, login, name, avatar_url, is_bot, tracked, tracked_at FROM users WHERE login = ?1",
+            params![login],
+            |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    github_id: row.get(1)?,
+                    login: row.get(2)?,
+                    name: row.get(3)?,
+                    avatar_url: row.get(4)?,
+                    is_bot: row.get(5)?,
+                    tracked: row.get(6)?,
+                    tracked_at: row.get(7)?,
+                })
+            },
+        )
+        .optional()?;
+
     Ok(result)
 }
 
@@ -182,32 +201,50 @@ pub fn upsert_issue(
     updated_at: &str,
     closed_at: Option<&str>,
     labels: &[String],
+    sync_updated_at: &str,
 ) -> Result<i64> {
     let labels_json = serde_json::to_string(labels)?;
-    
+
     conn.execute(
-        "INSERT INTO issues (github_id, repo_id, number, title, body, state, author_id, 
-                            assignee_id, milestone_id, created_at, updated_at, closed_at, labels)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        "INSERT INTO issues (github_id, repo_id, number, title, body, state, author_id,
+                            assignee_id, milestone_id, created_at, updated_at, closed_at, labels, sync_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(github_id) DO UPDATE SET
             title = excluded.title,
             body = excluded.body,
             state = excluded.state,
-            assignee_id = excluded.assignee_id,
-            milestone_id = excluded.milestone_id,
+            author_id = COALESCE(excluded.author_id, author_id),
+            assignee_id = COALESCE(excluded.assignee_id, assignee_id),
+            milestone_id = COALESCE(excluded.milestone_id, milestone_id),
             updated_at = excluded.updated_at,
             closed_at = excluded.closed_at,
-            labels = excluded.labels",
-        params![github_id, repo_id, number, title, body, state, author_id, 
-                assignee_id, milestone_id, created_at, updated_at, closed_at, labels_json],
+            labels = excluded.labels,
+            sync_updated_at = excluded.sync_updated_at
+         WHERE sync_updated_at IS NULL OR excluded.sync_updated_at >= sync_updated_at",
+        params![
+            github_id,
+            repo_id,
+            number,
+            title,
+            body,
+            state,
+            author_id,
+            assignee_id,
+            milestone_id,
+            created_at,
+            updated_at,
+            closed_at,
+            labels_json,
+            sync_updated_at,
+        ],
     )?;
-    
+
     let id: i64 = conn.query_row(
         "SELECT id FROM issues WHERE github_id = ?1",
         params![github_id],
         |row| row.get(0),
     )?;
-    
+
     Ok(id)
 }
 
@@ -361,28 +398,32 @@ pub fn upsert_pull_request(
     deletions: i32,
     changed_files: i32,
     labels: &[String],
+    sync_updated_at: &str,
 ) -> Result<i64> {
     let labels_json = serde_json::to_string(labels)?;
     
     conn.execute(
         "INSERT INTO pull_requests (github_id, repo_id, number, title, body, state, author_id,
                                    created_at, updated_at, merged_at, closed_at, 
-                                   additions, deletions, changed_files, labels)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                                   additions, deletions, changed_files, labels, sync_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
          ON CONFLICT(github_id) DO UPDATE SET
             title = excluded.title,
             body = excluded.body,
             state = excluded.state,
+            author_id = COALESCE(excluded.author_id, author_id),
             updated_at = excluded.updated_at,
             merged_at = excluded.merged_at,
             closed_at = excluded.closed_at,
             additions = excluded.additions,
             deletions = excluded.deletions,
             changed_files = excluded.changed_files,
-            labels = excluded.labels",
+            labels = excluded.labels,
+            sync_updated_at = excluded.sync_updated_at
+         WHERE excluded.sync_updated_at >= COALESCE(sync_updated_at, excluded.sync_updated_at) OR sync_updated_at IS NULL",
         params![github_id, repo_id, number, title, body, state, author_id,
                 created_at, updated_at, merged_at, closed_at, additions, deletions, 
-                changed_files, labels_json],
+                changed_files, labels_json, sync_updated_at],
     )?;
     
     let id: i64 = conn.query_row(
@@ -540,21 +581,25 @@ pub fn upsert_pr_review(
     reviewer_id: Option<i64>,
     state: &str,
     submitted_at: &str,
+    sync_updated_at: &str,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO pr_reviews (github_id, pr_id, reviewer_id, state, submitted_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO pr_reviews (github_id, pr_id, reviewer_id, state, submitted_at, sync_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(github_id) DO UPDATE SET
-            state = excluded.state",
-        params![github_id, pr_id, reviewer_id, state, submitted_at],
+            state = excluded.state,
+            reviewer_id = COALESCE(excluded.reviewer_id, reviewer_id),
+            sync_updated_at = excluded.sync_updated_at
+         WHERE sync_updated_at IS NULL OR excluded.sync_updated_at >= sync_updated_at",
+        params![github_id, pr_id, reviewer_id, state, submitted_at, sync_updated_at],
     )?;
-    
+
     let id: i64 = conn.query_row(
         "SELECT id FROM pr_reviews WHERE github_id = ?1",
         params![github_id],
         |row| row.get(0),
     )?;
-    
+
     Ok(id)
 }
 
@@ -574,6 +619,43 @@ pub fn get_first_review_time(conn: &Connection, pr_id: i64) -> Result<Option<Str
     let result = conn.query_row(
         "SELECT MIN(submitted_at) FROM pr_reviews WHERE pr_id = ?1",
         params![pr_id],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(result.flatten())
+}
+
+// ============================================================================
+// WATERMARK QUERIES (for incremental sync)
+// ============================================================================
+
+/// Get the maximum sync_updated_at for issues in a given repo (for incremental sync)
+pub fn get_issues_watermark(conn: &Connection, repo_id: i64) -> Result<Option<String>> {
+    let result = conn.query_row(
+        "SELECT MAX(sync_updated_at) FROM issues WHERE repo_id = ?1",
+        params![repo_id],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(result.flatten())
+}
+
+/// Get the maximum sync_updated_at for pull requests in a given repo (for incremental sync)
+pub fn get_prs_watermark(conn: &Connection, repo_id: i64) -> Result<Option<String>> {
+    let result = conn.query_row(
+        "SELECT MAX(sync_updated_at) FROM pull_requests WHERE repo_id = ?1",
+        params![repo_id],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(result.flatten())
+}
+
+/// Get the maximum sync_updated_at for PR reviews in a given repo (for incremental sync)
+pub fn get_reviews_watermark(conn: &Connection, repo_id: i64) -> Result<Option<String>> {
+    let result = conn.query_row(
+        "SELECT MAX(pr_reviews.sync_updated_at)
+         FROM pr_reviews
+         JOIN pull_requests ON pr_reviews.pr_id = pull_requests.id
+         WHERE pull_requests.repo_id = ?1",
+        params![repo_id],
         |row| row.get(0),
     ).optional()?;
     Ok(result.flatten())
