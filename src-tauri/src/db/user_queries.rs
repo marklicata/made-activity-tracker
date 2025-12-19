@@ -250,6 +250,8 @@ pub fn get_user_activity_timeline(
             name: row.get(11)?,
             avatar_url: row.get(12)?,
             is_bot: row.get(13)?,
+            tracked: false,
+            tracked_at: None,
         };
 
         let metadata = serde_json::json!({
