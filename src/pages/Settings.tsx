@@ -3,6 +3,7 @@ import {
   Plus, 
   Trash2, 
   Users, 
+  User, 
   GitBranch, 
   Clock, 
   Bot,
@@ -15,6 +16,7 @@ export default function Settings() {
   const {
     repositories,
     squads,
+    trackedUsers,
     historyDays,
     excludedBots,
     bugLabels,
@@ -24,6 +26,9 @@ export default function Settings() {
     toggleRepository,
     addSquad,
     removeSquad,
+    addTrackedUser,
+    removeTrackedUser,
+    toggleTrackedUser,
     setHistoryDays,
     setExcludedBots,
     setBugLabels,
@@ -35,6 +40,7 @@ export default function Settings() {
   const [newRepo, setNewRepo] = useState('');
   const [newSquadName, setNewSquadName] = useState('');
   const [newSquadMembers, setNewSquadMembers] = useState('');
+  const [newUser, setNewUser] = useState('');
   const [newBot, setNewBot] = useState('');
   const [newBugLabel, setNewBugLabel] = useState('');
   const [newFeatureLabel, setNewFeatureLabel] = useState('');
@@ -61,6 +67,14 @@ export default function Settings() {
       setNewSquadName('');
       setNewSquadMembers('');
     }
+  };
+
+  const handleAddUser = () => {
+    const username = newUser.trim().toLowerCase();
+    if (!username) return;
+    if (trackedUsers.some((user) => user.username === username)) return;
+    addTrackedUser(username);
+    setNewUser('');
   };
 
   const handleAddBot = () => {
@@ -143,6 +157,55 @@ export default function Settings() {
           />
           <button
             onClick={handleAddRepo}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-1"
+          >
+            <Plus size={16} />
+            Add
+          </button>
+        </div>
+      </section>
+
+      {/* Tracked Users */}
+      <section className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <User size={20} className="text-blue-600" />
+          Tracked Users
+        </h2>
+        <div className="space-y-3 mb-4">
+          {trackedUsers.length === 0 && (
+            <p className="text-gray-500 text-sm">No tracked users configured. Add one below.</p>
+          )}
+          {trackedUsers.map((user) => (
+            <div key={user.username} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={user.enabled}
+                  onChange={() => toggleTrackedUser(user.username)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="font-mono text-sm">{user.username}</span>
+              </div>
+              <button
+                onClick={() => removeTrackedUser(user.username)}
+                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newUser}
+            onChange={(e) => setNewUser(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddUser()}
+            placeholder="github-username"
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleAddUser}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-1"
           >
             <Plus size={16} />

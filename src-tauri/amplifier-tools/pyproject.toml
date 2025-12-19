@@ -1,0 +1,20 @@
+[project]
+name = "made-activity-tools"
+version = "0.1.0"
+description = "Custom Amplifier tools for MADE Activity Tracker"
+requires-python = ">=3.9"
+dependencies = [
+    "amplifier-core @ git+https://github.com/microsoft/amplifier-core",
+    "amplifier-profiles @ git+https://github.com/microsoft/amplifier-profiles",
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+]
+
+[project.entry-points."amplifier.tools"]
+metrics = "made_activity_tools.metrics_tool:mount"
+search = "made_activity_tools.search_tool:mount"
+user_activity = "made_activity_tools.user_activity_tool:mount"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

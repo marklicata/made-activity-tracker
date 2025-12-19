@@ -1,6 +1,8 @@
 use anyhow::Result;
 use serde::Deserialize;
 
+use crate::github::auth::GitHubUser;
+
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 /// Fallback: Fetch issues using REST API (may work when GraphQL fails due to SAML)

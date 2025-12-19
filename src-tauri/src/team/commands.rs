@@ -47,7 +47,9 @@ pub async fn add_tracked_user(
             &gh_user.login,
             gh_user.name.as_deref(),
             Some(&gh_user.avatar_url),
-            false,
+            None,
+            None,
+            None,
         )
         .map_err(|e| e.to_string())?;
     }

@@ -15,10 +15,23 @@ interface Squad {
   color: string;
 }
 
-// Match Rust AppConfig structure
+interface TrackedUser {
+  username: string;
+  tracked: boolean;
+  tracked_at?: string | null;
+}
+
+interface LegacyTrackedUser {
+  username: string;
+  enabled: boolean;
+}
+
+// Match Rust AppConfig structure (new users shape + legacy tracked_users)
 interface AppConfig {
   repositories: Repository[];
   squads: Squad[];
+  users?: TrackedUser[];
+  tracked_users?: LegacyTrackedUser[];
   history_days: number;
   excluded_bots: string[];
   bug_labels: string[];
@@ -31,6 +44,9 @@ interface ConfigState {
   
   // Team organization
   squads: Squad[];
+  
+  // Users to track
+  trackedUsers: TrackedUser[];
   
   // Sync settings
   historyDays: number;
@@ -49,6 +65,10 @@ interface ConfigState {
   updateSquad: (id: string, updates: Partial<Squad>) => void;
   removeSquad: (id: string) => void;
   
+  addTrackedUser: (username: string) => void;
+  removeTrackedUser: (username: string) => void;
+  toggleTrackedUser: (username: string) => void;
+  
   setHistoryDays: (days: number) => void;
   setExcludedBots: (bots: string[]) => void;
   setBugLabels: (labels: string[]) => void;
@@ -58,11 +78,38 @@ interface ConfigState {
   saveConfig: () => Promise<void>;
 }
 
+const normalizeUsername = (username: string) => username.trim().toLowerCase();
+
+const mapTrackedUsersFromConfig = (config: AppConfig): TrackedUser[] => {
+  const normalizedUsers = (config.users ?? []).map((user) => ({
+    username: normalizeUsername(user.username),
+    tracked: Boolean(user.tracked),
+    tracked_at: user.tracked_at ?? null,
+  }));
+
+  const normalizedLegacy = (config.tracked_users ?? []).map((user) => ({
+    username: normalizeUsername(user.username),
+    tracked: Boolean(user.enabled),
+    tracked_at: null,
+  }));
+
+  const merged = new Map<string, TrackedUser>();
+  normalizedUsers.forEach((user) => merged.set(user.username, user));
+  normalizedLegacy.forEach((user) => {
+    if (!merged.has(user.username)) {
+      merged.set(user.username, user);
+    }
+  });
+
+  return Array.from(merged.values());
+};
+
 export const useConfigStore = create<ConfigState>()(
   persist(
     (set, get) => ({
       repositories: [],
       squads: [],
+      trackedUsers: [],
       historyDays: 90,
       excludedBots: [
         'dependabot[bot]',
@@ -122,6 +169,39 @@ export const useConfigStore = create<ConfigState>()(
         get().saveConfig();
       },
 
+      addTrackedUser: (username) => {
+        const normalized = normalizeUsername(username);
+        if (!normalized) return;
+
+        const current = get().trackedUsers;
+        if (current.some((user) => user.username === normalized)) return;
+
+        set({ trackedUsers: [...current, { username: normalized, tracked: true, tracked_at: new Date().toISOString() }] });
+        get().saveConfig();
+      },
+
+      removeTrackedUser: (username) => {
+        const normalized = normalizeUsername(username);
+        set({ trackedUsers: get().trackedUsers.filter((u) => u.username !== normalized) });
+        get().saveConfig();
+      },
+
+      toggleTrackedUser: (username) => {
+        const normalized = normalizeUsername(username);
+        set({
+          trackedUsers: get().trackedUsers.map((u) =>
+            u.username === normalized
+              ? {
+                  ...u,
+                  tracked: !u.tracked,
+                  tracked_at: !u.tracked ? u.tracked_at ?? new Date().toISOString() : u.tracked_at,
+                }
+              : u
+          ),
+        });
+        get().saveConfig();
+      },
+
       setHistoryDays: (days) => {
         set({ historyDays: days });
         get().saveConfig();
@@ -146,9 +226,11 @@ export const useConfigStore = create<ConfigState>()(
         try {
           const config = await invoke<AppConfig>('load_config');
           if (config) {
+            const mergedTrackedUsers = mapTrackedUsersFromConfig(config);
             set({
               repositories: config.repositories || [],
               squads: config.squads || [],
+              trackedUsers: mergedTrackedUsers,
               historyDays: config.history_days || 90,
               excludedBots: config.excluded_bots || [],
               bugLabels: config.bug_labels || [],
@@ -162,11 +244,23 @@ export const useConfigStore = create<ConfigState>()(
 
       saveConfig: async () => {
         try {
-          const { repositories, squads, historyDays, excludedBots, bugLabels, featureLabels } = get();
-          // Map to Rust's snake_case structure
+          const { repositories, squads, trackedUsers, historyDays, excludedBots, bugLabels, featureLabels } = get();
+          const usersPayload = trackedUsers.map(({ username, tracked, tracked_at }) => ({
+            username,
+            tracked,
+            tracked_at: tracked_at ?? null,
+          }));
+          const legacyTrackedUsers = trackedUsers.map(({ username, tracked }) => ({
+            username,
+            enabled: tracked,
+          }));
+
+          // Map to Rust's snake_case structure (users is preferred; tracked_users kept for backward compatibility)
           const config: AppConfig = {
             repositories,
             squads,
+            users: usersPayload,
+            tracked_users: legacyTrackedUsers,
             history_days: historyDays,
             excluded_bots: excludedBots,
             bug_labels: bugLabels,

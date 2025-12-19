@@ -437,6 +437,8 @@ pub fn get_contributor_stats(
             name: row.get(3)?,
             avatar_url: row.get(4)?,
             is_bot: row.get(5)?,
+            tracked: false,
+            tracked_at: None,
         })
     })?;
 
@@ -765,6 +767,7 @@ pub fn get_lifecycle_metrics(
             author_id: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
+            sync_updated_at: None,
             merged_at: row.get(10)?,
             closed_at: row.get(11)?,
             additions: row.get(12)?,
@@ -804,6 +807,7 @@ pub fn get_lifecycle_metrics(
             milestone_id: row.get(9)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            sync_updated_at: None,
             closed_at: row.get(12)?,
             labels: serde_json::from_str(&row.get::<_, String>(13)?).unwrap_or_default(),
         })

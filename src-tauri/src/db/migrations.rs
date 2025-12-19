@@ -7,7 +7,11 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     // Run migrations for existing databases
     migrate_add_embedding_columns(conn)?;
-    migrate_add_tracked_users_table(conn)?;
+    migrate_add_tracked_users_table(conn)?; // deprecated but retained
+    migrate_add_sync_updated_at_columns(conn)?;
+    migrate_add_user_tracked_columns(conn)?;
+    migrate_add_milestone_repo_github_index(conn)?;
+    migrate_backfill_tracked_users(conn)?;
 
     tracing::info!("Database migrations completed");
     Ok(())
@@ -50,7 +54,7 @@ fn migrate_add_embedding_columns(conn: &Connection) -> Result<()> {
 
 /// Add tracked_users table for user-centric view
 fn migrate_add_tracked_users_table(conn: &Connection) -> Result<()> {
-    // Check if tracked_users table exists
+    // Check if tracked_users table exists (deprecated, kept for backwards compatibility)
     let table_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tracked_users'",
@@ -61,7 +65,7 @@ fn migrate_add_tracked_users_table(conn: &Connection) -> Result<()> {
         .unwrap_or(false);
 
     if !table_exists {
-        tracing::info!("Creating tracked_users table...");
+        tracing::info!("Creating tracked_users table (deprecated)...");
         conn.execute(
             "CREATE TABLE tracked_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,6 +80,117 @@ fn migrate_add_tracked_users_table(conn: &Connection) -> Result<()> {
             [],
         )?;
     }
+
+    Ok(())
+}
+
+/// Add sync_updated_at columns to issues, pull_requests, pr_reviews
+fn migrate_add_sync_updated_at_columns(conn: &Connection) -> Result<()> {
+    // issues
+    let has_issue_sync: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('issues') WHERE name='sync_updated_at'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+    if !has_issue_sync {
+        tracing::info!("Adding sync_updated_at to issues...");
+        conn.execute("ALTER TABLE issues ADD COLUMN sync_updated_at TEXT", [])?;
+        conn.execute("UPDATE issues SET sync_updated_at = updated_at WHERE sync_updated_at IS NULL", [])?;
+    }
+
+    // pull_requests
+    let has_pr_sync: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('pull_requests') WHERE name='sync_updated_at'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+    if !has_pr_sync {
+        tracing::info!("Adding sync_updated_at to pull_requests...");
+        conn.execute("ALTER TABLE pull_requests ADD COLUMN sync_updated_at TEXT", [])?;
+        conn.execute("UPDATE pull_requests SET sync_updated_at = updated_at WHERE sync_updated_at IS NULL", [])?;
+    }
+
+    // pr_reviews
+    let has_review_sync: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('pr_reviews') WHERE name='sync_updated_at'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+    if !has_review_sync {
+        tracing::info!("Adding sync_updated_at to pr_reviews...");
+        conn.execute("ALTER TABLE pr_reviews ADD COLUMN sync_updated_at TEXT", [])?;
+        conn.execute(
+            "UPDATE pr_reviews SET sync_updated_at = submitted_at WHERE sync_updated_at IS NULL",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Add tracked and tracked_at columns to users
+fn migrate_add_user_tracked_columns(conn: &Connection) -> Result<()> {
+    let has_tracked: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='tracked'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !has_tracked {
+        tracing::info!("Adding tracked and tracked_at to users...");
+        conn.execute("ALTER TABLE users ADD COLUMN tracked BOOLEAN NOT NULL DEFAULT FALSE", [])?;
+        conn.execute("ALTER TABLE users ADD COLUMN tracked_at TEXT", [])?;
+    }
+
+    Ok(())
+}
+
+/// Add UNIQUE(repo_id, github_id) index to milestones (databaseId alignment)
+fn migrate_add_milestone_repo_github_index(conn: &Connection) -> Result<()> {
+    // Ensure github_id column exists first (it does in base schema)
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_milestones_repo_github ON milestones(repo_id, github_id)",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Backfill users.tracked/tracked_at from tracked_users table (if present)
+fn migrate_backfill_tracked_users(conn: &Connection) -> Result<()> {
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tracked_users'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(());
+    }
+
+    tracing::info!("Backfilling users.tracked from tracked_users table...");
+    conn.execute(
+        "UPDATE users SET tracked = 1, tracked_at = (
+            SELECT added_at FROM tracked_users tu WHERE tu.user_id = users.id
+        ) WHERE EXISTS (
+            SELECT 1 FROM tracked_users tu WHERE tu.user_id = users.id
+        )",
+        [],
+    )?;
 
     Ok(())
 }
@@ -99,7 +214,9 @@ CREATE TABLE IF NOT EXISTS users (
     login TEXT NOT NULL,
     name TEXT,
     avatar_url TEXT,
-    is_bot BOOLEAN DEFAULT FALSE
+    is_bot BOOLEAN DEFAULT FALSE,
+    tracked BOOLEAN NOT NULL DEFAULT FALSE,
+    tracked_at TEXT
 );
 
 -- Issues
@@ -116,6 +233,7 @@ CREATE TABLE IF NOT EXISTS issues (
     milestone_id INTEGER REFERENCES milestones(id),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    sync_updated_at TEXT,
     closed_at TEXT,
     labels TEXT, -- JSON array of label names
     embedding BLOB, -- 384-dimensional float32 vector (1536 bytes)
@@ -134,6 +252,7 @@ CREATE TABLE IF NOT EXISTS pull_requests (
     author_id INTEGER REFERENCES users(id),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    sync_updated_at TEXT,
     merged_at TEXT,
     closed_at TEXT,
     additions INTEGER DEFAULT 0,
@@ -152,7 +271,8 @@ CREATE TABLE IF NOT EXISTS pr_reviews (
     pr_id INTEGER NOT NULL REFERENCES pull_requests(id),
     reviewer_id INTEGER REFERENCES users(id),
     state TEXT NOT NULL, -- APPROVED, CHANGES_REQUESTED, COMMENTED
-    submitted_at TEXT NOT NULL
+    submitted_at TEXT NOT NULL,
+    sync_updated_at TEXT
 );
 
 -- Milestones (Cycles)
@@ -166,7 +286,8 @@ CREATE TABLE IF NOT EXISTS milestones (
     due_on TEXT,
     open_issues INTEGER DEFAULT 0,
     closed_issues INTEGER DEFAULT 0,
-    UNIQUE(repo_id, title)
+    UNIQUE(repo_id, title),
+    UNIQUE(repo_id, github_id)
 );
 
 -- Squads (Team groupings)

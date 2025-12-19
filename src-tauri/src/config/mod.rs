@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     pub repositories: Vec<RepositoryConfig>,
     pub squads: Vec<SquadConfig>,
+    /// Preferred shape for tracked users with metadata
+    #[serde(default)]
+    pub users: Vec<UserTrackedConfig>,
+    /// Legacy shape kept for backward compatibility
+    #[serde(default)]
+    pub tracked_users: Vec<UserConfig>,
     pub history_days: i32,
     pub excluded_bots: Vec<String>,
     pub bug_labels: Vec<String>,
@@ -27,11 +33,28 @@ pub struct SquadConfig {
     pub color: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserConfig {
+    pub username: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserTrackedConfig {
+    pub username: String,
+    #[serde(default)]
+    pub tracked: bool,
+    #[serde(default)]
+    pub tracked_at: Option<String>,
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             repositories: vec![],
             squads: vec![],
+            users: vec![],
+            tracked_users: vec![],
             history_days: 90,
             excluded_bots: vec![
                 "dependabot[bot]".to_string(),

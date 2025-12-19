@@ -1,7 +1,7 @@
 # Feature Spec: AI Chat Panel
 
 ## Overview
-Add a collapsible chat interface that allows users to query and explore GitHub activity data using natural language. The AI agent (powered by Amplifier or similar) can answer questions about repositories, users, metrics, trends, and patterns across all tracked data.
+Add a collapsible chat interface that allows users to query and explore GitHub activity data using natural language. The AI agent (powered by Amplifier via amplifier-foundation) answers questions about repositories, users, metrics, trends, and patterns across all tracked data.
 
 ## Priority
 **LOW** - Implement after Phase 3 (Semantic Search Infrastructure) is complete
@@ -259,49 +259,15 @@ CREATE TABLE chat_messages (
 CREATE INDEX idx_chat_session ON chat_messages(session_id, timestamp);
 ```
 
-### AI Integration Options
-
-#### Option 1: Amplifier (Recommended)
-**Pros:**
-- Purpose-built for code/data analysis
-- Can reason about structured data
-- Tool calling built-in
-- Good cost/performance
-
-**Cons:**
-- Requires API key and internet connection
-- External dependency
-- Usage costs
-
-**Implementation:**
-- Backend makes HTTP requests to Amplifier API
-- Pass context + available tools/functions
-- Parse AI response and execute tool calls
-- Return formatted response to frontend
-
-#### Option 2: Claude API Direct
-**Pros:**
-- Most powerful reasoning
-- Excellent at natural language understanding
-- Tool use well-supported
-
-**Cons:**
-- Higher cost than Amplifier
-- Requires API key
-- Rate limits
-
-#### Option 3: Local LLM (Ollama)
-**Pros:**
-- No API costs
-- Works offline
-- Privacy (data stays local)
-
-**Cons:**
-- Requires local model download
-- Slower inference on CPU
-- Lower quality reasoning than cloud models
-
-**Recommendation:** Start with Amplifier (Option 1), but design API layer to be model-agnostic so users can switch.
+### AI Integration (Amplifier-first)
+- **Backend dependency:** Use the `amplifier-foundation` library to manage Amplifier bundles, providers, and session lifecycle.
+- **Execution model:** Tauri backend calls a local Amplifier runner (Python/CLI sidecar) over HTTP. The sidecar loads the foundation bundle (`git+https://github.com/microsoft/amplifier-foundation@main`) plus a provider bundle (Anthropic/OpenAI/Azure/Ollama) and prepares a session once, then executes chat turns.
+- **API key resolution:** Prefer Anthropic. Resolution order: `ANTHROPIC_API_KEY` → `OPENAI_API_KEY`. If neither is set, prompt the user to supply either key (store securely, never log). Expose a backend setting to override via config/env for headless runs.
+- **Context + tools:** For each chat turn, backend sends user message + serialized context + allowed tool list to Amplifier. Amplifier returns messages and tool calls; backend executes tool calls (SQLite, embeddings) and streams responses back.
+- **Provider selection:** Default to Anthropic provider config; keep provider bundle path configurable. Model choice is handled by the provider bundle, not by the frontend.
+- **Sidecar packaging & IPC:** Package as a Python venv with a small HTTP JSON endpoint (loopback, random high port, authenticated via shared secret). Start/stop lifecycle managed by Tauri backend; stream responses over chunked HTTP/SSE for partials. Avoid unix domain sockets for Windows portability.
+- **Offline/guardrails:** If Amplifier is unavailable, fall back to basic keyword/SQL search with a clear error. No multi-provider switcher in UI; only backend configuration.
+- **Observability:** Log Amplifier request/response envelopes (without PII) and latency for performance dashboards.
 
 ### Tool Definitions for AI
 

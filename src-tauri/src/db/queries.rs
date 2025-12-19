@@ -284,6 +284,7 @@ pub fn get_issues_for_metrics(
             milestone_id: row.get(9)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            sync_updated_at: None,
             closed_at: row.get(12)?,
             labels,
         }, author_login))
@@ -334,6 +335,7 @@ pub fn get_issues_without_embeddings(conn: &Connection, limit: i64) -> Result<Ve
             milestone_id: row.get(9)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            sync_updated_at: None,
             closed_at: row.get(12)?,
             labels,
         })
@@ -469,6 +471,7 @@ pub fn get_prs_for_metrics(
             author_id: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
+            sync_updated_at: None,
             merged_at: row.get(10)?,
             closed_at: row.get(11)?,
             additions: row.get(12)?,
@@ -522,6 +525,7 @@ pub fn get_prs_without_embeddings(conn: &Connection, limit: i64) -> Result<Vec<P
             author_id: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
+            sync_updated_at: None,
             merged_at: row.get(10)?,
             closed_at: row.get(11)?,
             additions: row.get(12)?,
@@ -959,6 +963,7 @@ pub fn get_issues_for_metrics_filtered(
             milestone_id: row.get(9)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            sync_updated_at: None,
             closed_at: row.get(12)?,
             labels,
         }, author_login))
@@ -1068,6 +1073,7 @@ pub fn get_prs_for_metrics_filtered(
             author_id: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
+            sync_updated_at: None,
             merged_at: row.get(10)?,
             closed_at: row.get(11)?,
             additions: row.get(12)?,
@@ -1128,6 +1134,8 @@ pub fn get_all_users(conn: &Connection) -> Result<Vec<User>> {
             name: row.get(3)?,
             avatar_url: row.get(4)?,
             is_bot: row.get(5)?,
+            tracked: false,
+            tracked_at: None,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;

@@ -117,8 +117,9 @@ impl GitHubCli {
                 author_id: None, // Will be resolved later
                 assignee_id: None, // Will be resolved later
                 milestone_id: None, // Will be resolved later
-                created_at: cli_issue.created_at,
-                updated_at: cli_issue.updated_at,
+                created_at: cli_issue.created_at.clone(),
+                updated_at: cli_issue.updated_at.clone(),
+                sync_updated_at: Some(cli_issue.updated_at),
                 closed_at: cli_issue.closed_at,
                 labels: cli_issue
                     .labels
@@ -130,6 +131,67 @@ impl GitHubCli {
 
         tracing::info!("Fetched {} issues via CLI", issues.len());
         Ok(issues)
+    }
+
+    /// Fetch pull requests using gh CLI with author info
+    pub async fn fetch_pull_requests_with_authors(&self, owner: &str, repo: &str) -> Result<Vec<(PullRequest, Option<String>)>> {
+        self.check_auth()?;
+
+        tracing::info!("Fetching PRs via CLI for {}/{}", owner, repo);
+
+        let output = AsyncCommand::new(&self.command_path)
+            .arg("pr")
+            .arg("list")
+            .arg("--repo")
+            .arg(format!("{}/{}", owner, repo))
+            .arg("--state")
+            .arg("all")
+            .arg("--limit")
+            .arg("1000")
+            .arg("--json")
+            .arg("number,title,body,state,author,createdAt,updatedAt,mergedAt,closedAt,additions,deletions,changedFiles,labels")
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("gh pr list failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let cli_prs: Vec<CliPullRequest> = serde_json::from_str(&stdout)
+            .map_err(|e| anyhow!("Failed to parse CLI PR response: {}", e))?;
+
+        let result: Vec<(PullRequest, Option<String>)> = cli_prs
+            .into_iter()
+            .map(|cli_pr| {
+                let author_login = cli_pr.author.as_ref().map(|a| a.login.clone());
+                let pr = PullRequest {
+                    id: 0,
+                    github_id: cli_pr.number as i64,
+                    repo_id: 0,
+                    number: cli_pr.number,
+                    title: cli_pr.title.clone(),
+                    body: cli_pr.body.clone(),
+                    state: cli_pr.state.clone(),
+                    author_id: None,
+                    created_at: cli_pr.created_at.clone(),
+                    updated_at: cli_pr.updated_at.clone(),
+                    sync_updated_at: Some(cli_pr.updated_at),
+                    merged_at: cli_pr.merged_at,
+                    closed_at: cli_pr.closed_at,
+                    additions: cli_pr.additions,
+                    deletions: cli_pr.deletions,
+                    changed_files: cli_pr.changed_files,
+                    review_comments: 0,
+                    labels: cli_pr.labels.iter().map(|l| l.name.clone()).collect(),
+                };
+                (pr, author_login)
+            })
+            .collect();
+
+        tracing::info!("Fetched {} PRs via CLI", result.len());
+        Ok(result)
     }
 
     /// Fetch pull requests using gh CLI
@@ -161,31 +223,34 @@ impl GitHubCli {
         let cli_prs: Vec<CliPullRequest> = serde_json::from_str(&stdout)
             .map_err(|e| anyhow!("Failed to parse CLI PR response: {}", e))?;
 
-        // Convert CLI format to our PullRequest model
+        // Return raw CLI data - will be processed by sync function
+        tracing::info!("Fetched {} PRs via CLI", cli_prs.len());
+        
+        // Convert to our model but preserve author login for later resolution
         let prs: Vec<PullRequest> = cli_prs
             .into_iter()
             .map(|cli_pr| PullRequest {
-                id: 0, // Will be assigned by database
-                github_id: cli_pr.number as i64, // Using number as temp ID
-                repo_id: 0, // Will be set by caller
+                id: 0,
+                github_id: cli_pr.number as i64,
+                repo_id: 0,
                 number: cli_pr.number,
                 title: cli_pr.title,
                 body: cli_pr.body,
                 state: cli_pr.state,
-                author_id: None, // Will be resolved later
-                created_at: cli_pr.created_at,
-                updated_at: cli_pr.updated_at,
+                author_id: None,
+                created_at: cli_pr.created_at.clone(),
+                updated_at: cli_pr.updated_at.clone(),
+                sync_updated_at: Some(cli_pr.updated_at),
                 merged_at: cli_pr.merged_at,
                 closed_at: cli_pr.closed_at,
                 additions: cli_pr.additions,
                 deletions: cli_pr.deletions,
                 changed_files: cli_pr.changed_files,
-                review_comments: 0, // Will need separate call to get review count
+                review_comments: 0,
                 labels: cli_pr.labels.iter().map(|l| l.name.clone()).collect(),
             })
             .collect();
-
-        tracing::info!("Fetched {} PRs via CLI", prs.len());
+        
         Ok(prs)
     }
 
@@ -273,8 +338,9 @@ impl GitHubCli {
                 github_id: cli_rev.id,
                 pr_id: 0, // Will be set by caller
                 reviewer_id: None, // Will be resolved later
-                state: cli_rev.state,
-                submitted_at: cli_rev.submitted_at,
+                state: cli_rev.state.clone(),
+                submitted_at: cli_rev.submitted_at.clone(),
+                sync_updated_at: Some(cli_rev.submitted_at),
             })
             .collect();
 

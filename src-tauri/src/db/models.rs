@@ -18,6 +18,8 @@ pub struct User {
     pub name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_bot: bool,
+    pub tracked: bool,
+    pub tracked_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +36,7 @@ pub struct Issue {
     pub milestone_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+    pub sync_updated_at: Option<String>,
     pub closed_at: Option<String>,
     pub labels: Vec<String>,
     // Note: embedding BLOB is stored in DB but not loaded in this model for performance
@@ -51,6 +54,7 @@ pub struct PullRequest {
     pub author_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+    pub sync_updated_at: Option<String>,
     pub merged_at: Option<String>,
     pub closed_at: Option<String>,
     pub additions: i32,
@@ -69,6 +73,7 @@ pub struct PrReview {
     pub reviewer_id: Option<i64>,
     pub state: String,
     pub submitted_at: String,
+    pub sync_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

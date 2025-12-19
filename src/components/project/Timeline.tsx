@@ -83,7 +83,7 @@ export default function Timeline({ events, repository }: TimelineProps) {
       case 'review':
         return 'reviewed';
       default:
-        return event_type;
+        return eventType;
     }
   }
 

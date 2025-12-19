@@ -68,6 +68,8 @@ pub fn get_user_summary_data(
                 name: row.get(3)?,
                 avatar_url: row.get(4)?,
                 is_bot: row.get(5)?,
+                tracked: false,
+                tracked_at: None,
             })
         },
     )?;
@@ -557,6 +559,8 @@ pub fn get_collaboration_matrix(
                 name: row.get(3)?,
                 avatar_url: row.get(4)?,
                 is_bot: row.get(5)?,
+                tracked: false,
+                tracked_at: None,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
