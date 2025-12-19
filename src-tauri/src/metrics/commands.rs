@@ -1,6 +1,7 @@
 use super::calculator::{calculate_dashboard_metrics, DashboardMetrics};
 use super::filter_params::MetricsFilters;
 use crate::db::AppState;
+use crate::db::metrics_queries;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -223,4 +224,19 @@ fn generate_date_buckets(start: &str, end: &str, granularity: &str) -> Vec<(Stri
     }
 
     buckets
+}
+
+/// Get PR-based dashboard metrics (Amplifier-style)
+/// This uses PR activity instead of commit data for Speed/Ease/Quality metrics
+#[tauri::command]
+pub async fn get_pr_based_metrics(
+    days: Option<i32>,
+    state: State<'_, AppState>,
+) -> Result<metrics_queries::DashboardMetrics, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    let days = days.unwrap_or(30); // Default to 30 days
+
+    metrics_queries::get_dashboard_metrics(&conn, days)
+        .map_err(|e| e.to_string())
 }

@@ -15,6 +15,8 @@ import {
   Loader2,
   Settings,
   X,
+  BarChart3,
+  Activity,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
@@ -22,6 +24,7 @@ import { DateRangeFilter, RepositoryFilter, SquadFilter, UserFilter } from '@com
 import { MetricsTrendChart } from '@components/charts';
 import { useDashboardFilterStore } from '@stores/dashboardFilterStore';
 import { TimeseriesDataPoint } from '@types/filters';
+import { AmplifierMetricsView } from '@components/metrics/AmplifierMetricsView';
 
 interface Metrics {
   speed: {
@@ -113,6 +116,7 @@ export default function Dashboard() {
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [viewMode, setViewMode] = useState<'dora' | 'amplifier'>('amplifier'); // Default to amplifier
 
   const { filters, clearFilters, hasActiveFilters } = useDashboardFilterStore();
 
@@ -241,17 +245,17 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500">Team productivity metrics across all repositories</p>
         </div>
-        
+
         <div className="flex items-center gap-4">
           {/* Stats Summary */}
           {stats && (
             <div className="text-sm text-gray-500 text-right">
-              <span className="font-medium text-gray-700">{stats.repositories}</span> repos · 
-              <span className="font-medium text-gray-700"> {stats.issues}</span> issues · 
+              <span className="font-medium text-gray-700">{stats.repositories}</span> repos ·
+              <span className="font-medium text-gray-700"> {stats.issues}</span> issues ·
               <span className="font-medium text-gray-700"> {stats.pull_requests}</span> PRs
             </div>
           )}
-          
+
           {/* Sync Button */}
           <button
             onClick={handleSync}
@@ -272,6 +276,36 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* View Mode Toggle */}
+      {hasData && (
+        <div className="mb-6 flex items-center gap-2 p-1 bg-gray-100 rounded-lg w-fit">
+          <button
+            onClick={() => setViewMode('amplifier')}
+            className={clsx(
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              viewMode === 'amplifier'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            <Activity size={16} />
+            Amplifier Metrics
+          </button>
+          <button
+            onClick={() => setViewMode('dora')}
+            className={clsx(
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              viewMode === 'dora'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            <BarChart3 size={16} />
+            DORA Metrics
+          </button>
+        </div>
+      )}
 
       {/* Sync Progress */}
       {syncProgress && syncing && (
@@ -334,8 +368,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Metrics Display */}
-      {metrics && (
+      {/* Amplifier Metrics View */}
+      {viewMode === 'amplifier' && hasData && (
+        <AmplifierMetricsView days={30} />
+      )}
+
+      {/* DORA Metrics View */}
+      {viewMode === 'dora' && metrics && (
         <>
           {/* Speed Metrics */}
           <section className="mb-8">
