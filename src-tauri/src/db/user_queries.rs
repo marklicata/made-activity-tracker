@@ -301,6 +301,8 @@ pub fn get_user_activity_timeline(
             name: row.get(8)?,
             avatar_url: row.get(9)?,
             is_bot: row.get(10)?,
+            tracked: false,
+            tracked_at: None,
         };
 
         let metadata = serde_json::json!({
@@ -349,6 +351,8 @@ pub fn get_user_activity_timeline(
             name: row.get(6)?,
             avatar_url: row.get(7)?,
             is_bot: row.get(8)?,
+            tracked: false,
+            tracked_at: None,
         };
 
         let metadata = serde_json::json!({

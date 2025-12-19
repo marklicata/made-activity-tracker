@@ -235,6 +235,8 @@ pub fn get_timeline_events(
                 name: row.get(12)?,
                 avatar_url: row.get(13)?,
                 is_bot: row.get(14)?,
+                tracked: false,
+                tracked_at: None,
             };
 
             let metadata = serde_json::json!({
@@ -291,6 +293,8 @@ pub fn get_timeline_events(
                 name: row.get(12)?,
                 avatar_url: row.get(13)?,
                 is_bot: row.get(14)?,
+                tracked: false,
+                tracked_at: None,
             };
 
             let metadata = serde_json::json!({

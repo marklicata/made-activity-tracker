@@ -170,7 +170,6 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
                 }
                 milestone {
                     id
-                    databaseId
                     number
                     title
                 }
@@ -241,7 +240,6 @@ query($owner: String!, $name: String!) {
         milestones(first: 100, orderBy: {field: DUE_DATE, direction: ASC}) {
             nodes {
                 id
-                databaseId
                 number
                 title
                 description
@@ -381,7 +379,6 @@ pub struct MilestoneConnection {
 #[serde(rename_all = "camelCase")]
 pub struct MilestoneNode {
     pub id: String,
-    pub database_id: i64,
     pub number: i32,
     pub title: String,
     pub description: Option<String>,
@@ -434,7 +431,6 @@ pub struct LabelNode {
 #[serde(rename_all = "camelCase")]
 pub struct MilestoneRef {
     pub id: String,
-    pub database_id: i64,
     pub number: i32,
     pub title: String,
 }

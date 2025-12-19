@@ -7,10 +7,13 @@ import {
   Search,
   Settings,
   RefreshCw,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 import { useSyncStore } from '@stores/syncStore';
 import { useAuthStore } from '@stores/authStore';
+import { useChatStore } from '@stores/chatStore';
+import ChatPanel from './ai/ChatPanel';
 import clsx from 'clsx';
 
 const navItems = [
@@ -25,6 +28,7 @@ const navItems = [
 export default function Layout() {
   const { isSyncing, lastSyncAt, triggerSync } = useSyncStore();
   const logout = useAuthStore((state) => state.logout);
+  const { isOpen, togglePanel } = useChatStore();
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -61,6 +65,22 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* AI Chat Toggle */}
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={togglePanel}
+            className={clsx(
+              'w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              isOpen
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            )}
+          >
+            <MessageSquare size={16} />
+            AI Assistant
+          </button>
+        </div>
 
         {/* Sync Status */}
         <div className="p-4 border-t border-gray-200">
@@ -100,6 +120,9 @@ export default function Layout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {/* AI Chat Panel */}
+      <ChatPanel />
     </div>
   );
 }
