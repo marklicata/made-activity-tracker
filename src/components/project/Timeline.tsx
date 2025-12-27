@@ -32,7 +32,7 @@ interface Repository {
 
 interface TimelineProps {
   events: TimelineEvent[];
-  repository: Repository;
+  repository: Repository | null;
 }
 
 export default function Timeline({ events, repository }: TimelineProps) {
@@ -103,7 +103,17 @@ export default function Timeline({ events, repository }: TimelineProps) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
-  function getGitHubUrl(event: TimelineEvent): string {
+  function getGitHubUrl(event: TimelineEvent): string | null {
+    // If event already has a URL, use it
+    if (event.url) {
+      return event.url;
+    }
+
+    // If no repository context, can't generate URL
+    if (!repository) {
+      return null;
+    }
+
     const baseUrl = `https://github.com/${repository.owner}/${repository.name}`;
     if (event.event_type.startsWith('pr_')) {
       return `${baseUrl}/pull/${event.metadata.pr_number}`;
@@ -167,14 +177,20 @@ export default function Timeline({ events, repository }: TimelineProps) {
                 </span>
               </div>
 
-              <a
-                href={getGitHubUrl(event)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block mt-1 text-gray-900 hover:text-blue-600 transition-colors group-hover:underline"
-              >
-                {event.title}
-              </a>
+              {getGitHubUrl(event) ? (
+                <a
+                  href={getGitHubUrl(event)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block mt-1 text-gray-900 hover:text-blue-600 transition-colors group-hover:underline"
+                >
+                  {event.title}
+                </a>
+              ) : (
+                <div className="block mt-1 text-gray-900">
+                  {event.title}
+                </div>
+              )}
 
               {event.event_type === 'pr_merged' && event.metadata.additions !== undefined && (
                 <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">

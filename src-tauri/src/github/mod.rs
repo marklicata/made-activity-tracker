@@ -4,3 +4,4 @@ pub mod commands;
 pub mod graphql;
 pub mod rest_api;
 pub mod sync;
+pub mod sync_user;

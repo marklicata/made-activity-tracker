@@ -96,3 +96,14 @@ pub struct Squad {
     pub color: Option<String>,
     pub members: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub id: i64,
+    pub history_days: i32,
+    pub excluded_bots: Vec<String>,
+    pub bug_labels: Vec<String>,
+    pub feature_labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}

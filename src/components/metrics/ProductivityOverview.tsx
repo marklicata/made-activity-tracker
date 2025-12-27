@@ -8,7 +8,7 @@ interface ProductivityOverviewProps {
 }
 
 export function ProductivityOverview({ overview }: ProductivityOverviewProps) {
-  const multiplier = overview.productivity_multiplier;
+  const multiplier = overview.productivity_multiplier ?? 0;
 
   // Determine tier for visual styling
   let tier: 'below' | 'industry' | 'elite' | 'exceptional';

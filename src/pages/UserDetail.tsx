@@ -74,41 +74,60 @@ export default function UserDetail() {
     setError(null);
 
     try {
-      const [summaryData, timelineData, contributionsData, trendData, metricsData] = await Promise.all([
-        invoke<UserSummary>('get_user_summary', {
-          username,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-        }),
-        invoke<TimelineEvent[]>('get_user_activity_timeline', {
-          username,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-          limit: 100,
-        }),
-        invoke<RepositoryContribution[]>('get_user_repository_distribution', {
-          username,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-        }),
-        invoke<ActivityDataPoint[]>('get_user_activity_trend', {
-          username,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-          granularity: 'week', // Weekly aggregation for 30 days
-        }),
-        invoke<FocusMetrics>('get_user_focus_metrics', {
-          username,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-        }),
-      ]);
-
+      // Load user summary first - this is required
+      const summaryData = await invoke<UserSummary>('get_user_summary', {
+        username,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+      });
       setSummary(summaryData);
-      setTimeline(timelineData);
-      setContributions(contributionsData);
-      setActivityTrend(trendData);
-      setFocusMetrics(metricsData);
+
+      // Load other data independently - failures won't crash the page
+      invoke<TimelineEvent[]>('get_user_activity_timeline', {
+        username,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        limit: 100,
+      })
+        .then(setTimeline)
+        .catch(err => {
+          console.error('Failed to load timeline:', err);
+          setTimeline([]);
+        });
+
+      invoke<RepositoryContribution[]>('get_user_repository_distribution', {
+        username,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+      })
+        .then(setContributions)
+        .catch(err => {
+          console.error('Failed to load contributions:', err);
+          setContributions([]);
+        });
+
+      invoke<ActivityDataPoint[]>('get_user_activity_trend', {
+        username,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        granularity: 'week',
+      })
+        .then(setActivityTrend)
+        .catch(err => {
+          console.error('Failed to load activity trend:', err);
+          setActivityTrend([]);
+        });
+
+      invoke<FocusMetrics>('get_user_focus_metrics', {
+        username,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+      })
+        .then(setFocusMetrics)
+        .catch(err => {
+          console.error('Failed to load focus metrics:', err);
+          setFocusMetrics(null);
+        });
     } catch (err) {
       setError(err as string);
       console.error('Failed to load user data:', err);
@@ -263,9 +282,11 @@ export default function UserDetail() {
         </div>
 
         {/* Repository Distribution */}
-        <div className="mt-8">
-          <RepositoryDistribution contributions={contributions} />
-        </div>
+        {contributions.length > 0 && (
+          <div className="mt-8">
+            <RepositoryDistribution contributions={contributions} />
+          </div>
+        )}
 
         {/* Focus Analysis */}
         {focusMetrics && (
@@ -275,14 +296,18 @@ export default function UserDetail() {
         )}
 
         {/* Activity Trend */}
-        <div className="mt-8">
-          <UserActivityTrend data={activityTrend} username={username || ''} />
-        </div>
+        {activityTrend.length > 0 && (
+          <div className="mt-8">
+            <UserActivityTrend data={activityTrend} username={username || ''} />
+          </div>
+        )}
 
         {/* Activity Timeline */}
-        <div className="mt-8">
-          <Timeline events={timeline} repository={null} />
-        </div>
+        {timeline.length > 0 && (
+          <div className="mt-8">
+            <Timeline events={timeline} repository={null} />
+          </div>
+        )}
       </div>
     </div>
   );

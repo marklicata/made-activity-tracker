@@ -4,7 +4,6 @@
 )]
 
 mod ai;
-mod config;
 mod db;
 mod embeddings;
 mod github;
@@ -24,6 +23,21 @@ pub struct AiState {
 }
 
 fn main() {
+    // Load API keys from project keys.env file if it exists
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let keys_env_path = manifest_dir.parent().unwrap().join("keys.env");
+
+    if keys_env_path.exists() {
+        if let Err(e) = dotenvy::from_path(&keys_env_path) {
+            eprintln!("Warning: Failed to load API keys from {:?}: {}", keys_env_path, e);
+        } else {
+            println!("Loaded API keys from {:?}", keys_env_path);
+        }
+    } else {
+        eprintln!("Warning: keys.env file not found at {:?}", keys_env_path);
+        eprintln!("AI chat features may not work without API keys.");
+    }
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -103,17 +117,28 @@ fn main() {
             github::commands::github_login,
             github::commands::github_logout,
             github::commands::check_auth,
-            
+
             // Sync commands
             github::commands::sync_github_data,
             github::commands::sync_repository,
-            
-            // Config commands
-            config::commands::load_config,
-            config::commands::save_config,
-            config::commands::get_sync_stats,
-            config::commands::get_all_users,
-            config::commands::get_all_repositories,
+
+            // Database CRUD commands
+            db::commands::get_settings,
+            db::commands::update_settings,
+            db::commands::add_repository,
+            db::commands::remove_repository,
+            db::commands::toggle_repository,
+            db::commands::add_squad,
+            db::commands::update_squad,
+            db::commands::remove_squad,
+            db::commands::get_all_squads_command,
+            db::commands::toggle_user_tracked,
+            db::commands::fix_invalid_users,
+
+            // Query helper commands
+            db::commands::get_sync_stats,
+            db::commands::get_all_users,
+            db::commands::get_all_repositories,
 
             // Metrics commands
             metrics::commands::get_dashboard_metrics,

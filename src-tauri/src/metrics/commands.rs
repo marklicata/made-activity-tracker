@@ -12,27 +12,25 @@ pub async fn get_dashboard_metrics(
     state: State<'_, AppState>,
 ) -> Result<DashboardMetrics, String> {
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
-    
-    // Default to 90 days of history
-    let since = (Utc::now() - Duration::days(90))
+
+    // Load settings from SQLite
+    let settings = crate::db::queries::get_settings(&conn).map_err(|e| e.to_string())?;
+    let history_days = settings.history_days;
+    let excluded_bots = settings.excluded_bots;
+    let bug_labels = settings.bug_labels;
+
+    let since = (Utc::now() - Duration::days(history_days as i64))
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
-    
-    // TODO: Load these from config
-    let excluded_bots = vec![
-        "dependabot[bot]".to_string(),
-        "renovate[bot]".to_string(),
-    ];
-    let bug_labels = vec!["bug".to_string(), "defect".to_string()];
-    
+
     let issues = crate::db::queries::get_issues_for_metrics(&conn, &since, &excluded_bots)
         .map_err(|e| e.to_string())?;
-    
+
     let prs = crate::db::queries::get_prs_for_metrics(&conn, &since, &excluded_bots)
         .map_err(|e| e.to_string())?;
-    
-    let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, 90);
-    
+
+    let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, history_days as i64);
+
     Ok(metrics)
 }
 
@@ -64,23 +62,22 @@ pub async fn get_dashboard_metrics_filtered(
 ) -> Result<DashboardMetrics, String> {
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
+    // Load settings from SQLite
+    let settings = crate::db::queries::get_settings(&conn).map_err(|e| e.to_string())?;
+    let history_days = settings.history_days;
+    let excluded_bots = settings.excluded_bots;
+    let bug_labels = settings.bug_labels;
+
     // Determine date range
     let (since, until) = if let Some(range) = filters.date_range {
         (range.start, Some(range.end))
     } else {
-        // Default to 90 days
-        let since = (Utc::now() - Duration::days(90))
+        // Default to history_days from settings
+        let since = (Utc::now() - Duration::days(history_days as i64))
             .format("%Y-%m-%dT%H:%M:%SZ")
             .to_string();
         (since, None)
     };
-
-    // TODO: Load from config
-    let excluded_bots = vec![
-        "dependabot[bot]".to_string(),
-        "renovate[bot]".to_string(),
-    ];
-    let bug_labels = vec!["bug".to_string(), "defect".to_string()];
 
     // Get squad member IDs if squad filter is set
     let squad_member_ids = if let Some(ref squad_id) = filters.squad_id {
@@ -111,11 +108,10 @@ pub async fn get_dashboard_metrics_filtered(
         squad_member_ids.as_deref(),
     ).map_err(|e| e.to_string())?;
 
-    // Calculate days in period
-    // TODO: Calculate actual days from date range instead of hardcoding
-    let days_in_period = 90;
+    // Use history_days from settings
+    let days_in_period = history_days;
 
-    let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, days_in_period);
+    let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, days_in_period as i64);
 
     Ok(metrics)
 }
@@ -154,8 +150,10 @@ pub async fn get_metrics_timeseries(
     // Generate date buckets based on granularity
     let date_buckets = generate_date_buckets(&start_date, &end_date, &granularity);
 
-    let excluded_bots = vec!["dependabot[bot]".to_string(), "renovate[bot]".to_string()];
-    let bug_labels = vec!["bug".to_string(), "defect".to_string()];
+    // Load settings from SQLite
+    let settings = crate::db::queries::get_settings(&conn).map_err(|e| e.to_string())?;
+    let excluded_bots = settings.excluded_bots;
+    let bug_labels = settings.bug_labels;
 
     let squad_member_ids = if let Some(ref squad_id) = filters.squad_id {
         Some(crate::db::queries::get_squad_member_ids(&conn, squad_id)
@@ -187,7 +185,7 @@ pub async fn get_metrics_timeseries(
             squad_member_ids.as_deref(),
         ).map_err(|e| e.to_string())?;
 
-        let days = 7; // Simplified for weekly
+        let days = 7i64; // Simplified for weekly
         let metrics = calculate_dashboard_metrics(&issues, &prs, &bug_labels, days);
 
         timeseries.push(TimeseriesDataPoint {

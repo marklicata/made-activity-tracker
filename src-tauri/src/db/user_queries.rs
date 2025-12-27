@@ -425,11 +425,11 @@ pub fn get_user_repo_distribution(
             JOIN repositories r ON i.repo_id = r.id
             WHERE i.author_id = ?1{}
             UNION
-            SELECT pr.repo_id, r.owner, r.name
-            FROM pr_reviews rev
-            JOIN pull_requests pr ON rev.pr_id = pr.id
-            JOIN repositories r ON pr.repo_id = r.id
-            WHERE rev.reviewer_id = ?1{}
+            SELECT pr.repo_id, repo.owner, repo.name
+            FROM pr_reviews r
+            JOIN pull_requests pr ON r.pr_id = pr.id
+            JOIN repositories repo ON pr.repo_id = repo.id
+            WHERE r.reviewer_id = ?1{}
         )",
         date_filter, date_filter, review_date_filter
     );

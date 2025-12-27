@@ -10,19 +10,13 @@ use tauri::{AppHandle, Manager};
 
 /// Sync all data for all enabled repositories
 pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> Result<()> {
-    // Load config to get history_days and excluded_bots
-    let config = crate::config::commands::load_config_internal(app)?;
-    
-    // Ensure repositories from config are in the database
-    {
+    // Load settings from SQLite to get history_days and excluded_bots
+    let (history_days, excluded_bots) = {
         let conn = state.sqlite.lock().unwrap();
-        for repo_config in &config.repositories {
-            if repo_config.enabled {
-                queries::upsert_repository(&conn, &repo_config.owner, &repo_config.name, None, true)?;
-            }
-        }
-    }
-    
+        let settings = queries::get_settings(&conn)?;
+        (settings.history_days, settings.excluded_bots)
+    };
+
     // Get enabled repos from database
     let repos = {
         let conn = state.sqlite.lock().unwrap();
@@ -35,13 +29,13 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
     }
 
     let total_repos = repos.len();
-    let since_date = Utc::now() - Duration::days(config.history_days as i64);
+    let since_date = Utc::now() - Duration::days(history_days as i64);
     let since = since_date.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     tracing::info!("Starting sync for {} repos, since {}", total_repos, since);
 
     for (idx, repo) in repos.iter().enumerate() {
-        emit_progress(app, "syncing", idx + 1, total_repos, 
+        emit_progress(app, "syncing", idx + 1, total_repos,
             &format!("Syncing {}/{}", repo.owner, repo.name));
 
         // Sync milestones first (needed for issue references)
@@ -50,12 +44,12 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
         }
 
         // Sync issues
-        if let Err(e) = sync_issues(state, token, repo.id, &repo.owner, &repo.name, &since, &config.excluded_bots).await {
+        if let Err(e) = sync_issues(state, token, repo.id, &repo.owner, &repo.name, &since, &excluded_bots).await {
             tracing::error!("Failed to sync issues for {}/{}: {}", repo.owner, repo.name, e);
         }
 
         // Sync PRs
-        if let Err(e) = sync_pull_requests(state, token, repo.id, &repo.owner, &repo.name, &config.excluded_bots).await {
+        if let Err(e) = sync_pull_requests(state, token, repo.id, &repo.owner, &repo.name, &excluded_bots).await {
             tracing::error!("Failed to sync PRs for {}/{}: {}", repo.owner, repo.name, e);
         }
 
@@ -84,16 +78,20 @@ pub async fn sync_all_repos(app: &AppHandle, state: &AppState, token: &str) -> R
 
 /// Sync a single repository by ID
 pub async fn sync_single_repo(app: &AppHandle, state: &AppState, token: &str, repo_id: i64) -> Result<()> {
-    // Load config to get history_days and excluded_bots
-    let config = crate::config::commands::load_config_internal(app)?;
-    
+    // Load settings from SQLite to get history_days and excluded_bots
+    let (history_days, excluded_bots) = {
+        let conn = state.sqlite.lock().unwrap();
+        let settings = queries::get_settings(&conn)?;
+        (settings.history_days, settings.excluded_bots)
+    };
+
     // Get the repository from database
     let repo = {
         let conn = state.sqlite.lock().unwrap();
         queries::get_repository_by_id(&conn, repo_id)?
     };
 
-    let since_date = Utc::now() - Duration::days(config.history_days as i64);
+    let since_date = Utc::now() - Duration::days(history_days as i64);
     let since = since_date.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     tracing::info!("Starting sync for {}/{}", repo.owner, repo.name);
@@ -105,12 +103,12 @@ pub async fn sync_single_repo(app: &AppHandle, state: &AppState, token: &str, re
     }
 
     // Sync issues
-    if let Err(e) = sync_issues(state, token, repo.id, &repo.owner, &repo.name, &since, &config.excluded_bots).await {
+    if let Err(e) = sync_issues(state, token, repo.id, &repo.owner, &repo.name, &since, &excluded_bots).await {
         tracing::error!("Failed to sync issues for {}/{}: {}", repo.owner, repo.name, e);
     }
 
     // Sync PRs
-    if let Err(e) = sync_pull_requests(state, token, repo.id, &repo.owner, &repo.name, &config.excluded_bots).await {
+    if let Err(e) = sync_pull_requests(state, token, repo.id, &repo.owner, &repo.name, &excluded_bots).await {
         tracing::error!("Failed to sync PRs for {}/{}: {}", repo.owner, repo.name, e);
     }
 
@@ -136,7 +134,7 @@ pub async fn sync_single_repo(app: &AppHandle, state: &AppState, token: &str, re
 }
 
 /// Generate embeddings for issues and PRs that don't have them yet
-async fn generate_embeddings_for_new_items(app: &AppHandle, state: &AppState) -> Result<()> {
+pub async fn generate_embeddings_for_new_items(app: &AppHandle, state: &AppState) -> Result<()> {
     const BATCH_SIZE: i64 = 50;
 
     tracing::debug!("Entered generate_embeddings_for_new_items function");

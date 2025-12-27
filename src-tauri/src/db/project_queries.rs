@@ -116,13 +116,23 @@ pub fn get_timeline_events(
 
         let mut stmt = conn.prepare(&query)?;
         let issue_iter = stmt.query_map([repo_id], |row| {
+            // Check if user exists (LEFT JOIN may return NULL)
+            let user_id: Option<i64> = row.get(6)?;
+            let user_github_id: Option<i64> = row.get(7)?;
+            let user_login: Option<String> = row.get(8)?;
+
+            // Skip if user doesn't exist
+            if user_id.is_none() || user_github_id.is_none() || user_login.is_none() {
+                return Ok(None);
+            }
+
             let user = User {
-                id: row.get(6)?,
-                github_id: row.get(7)?,
-                login: row.get(8)?,
+                id: user_id.unwrap(),
+                github_id: user_github_id.unwrap(),
+                login: user_login.unwrap(),
                 name: row.get(9)?,
                 avatar_url: row.get(10)?,
-                is_bot: row.get(11)?,
+                is_bot: row.get(11).unwrap_or(false),
                 tracked: false,
                 tracked_at: None,
             };
@@ -132,7 +142,7 @@ pub fn get_timeline_events(
                 "state": "opened"
             });
 
-            Ok(TimelineEvent {
+            Ok(Some(TimelineEvent {
                 id: format!("issue-{}-opened", row.get::<_, i64>(0)?),
                 event_type: "issue_opened".to_string(),
                 timestamp: row.get(4)?,
@@ -141,11 +151,13 @@ pub fn get_timeline_events(
                 description: row.get(3)?,
                 url: None,
                 metadata,
-            })
+            }))
         })?;
 
         for event in issue_iter {
-            events.push(event?);
+            if let Some(e) = event? {
+                events.push(e);
+            }
         }
 
         // Issue closed events
@@ -171,13 +183,23 @@ pub fn get_timeline_events(
 
         let mut stmt = conn.prepare(&query)?;
         let issue_closed_iter = stmt.query_map([repo_id], |row| {
+            // Check if user exists (LEFT JOIN may return NULL)
+            let user_id: Option<i64> = row.get(6)?;
+            let user_github_id: Option<i64> = row.get(7)?;
+            let user_login: Option<String> = row.get(8)?;
+
+            // Skip if user doesn't exist
+            if user_id.is_none() || user_github_id.is_none() || user_login.is_none() {
+                return Ok(None);
+            }
+
             let user = User {
-                id: row.get(6)?,
-                github_id: row.get(7)?,
-                login: row.get(8)?,
+                id: user_id.unwrap(),
+                github_id: user_github_id.unwrap(),
+                login: user_login.unwrap(),
                 name: row.get(9)?,
                 avatar_url: row.get(10)?,
-                is_bot: row.get(11)?,
+                is_bot: row.get(11).unwrap_or(false),
                 tracked: false,
                 tracked_at: None,
             };
@@ -187,7 +209,7 @@ pub fn get_timeline_events(
                 "state": "closed"
             });
 
-            Ok(TimelineEvent {
+            Ok(Some(TimelineEvent {
                 id: format!("issue-{}-closed", row.get::<_, i64>(0)?),
                 event_type: "issue_closed".to_string(),
                 timestamp: row.get::<_, String>(4)?,
@@ -196,11 +218,13 @@ pub fn get_timeline_events(
                 description: row.get(3)?,
                 url: None,
                 metadata,
-            })
+            }))
         })?;
 
         for event in issue_closed_iter {
-            events.push(event?);
+            if let Some(e) = event? {
+                events.push(e);
+            }
         }
     }
 
@@ -228,13 +252,23 @@ pub fn get_timeline_events(
 
         let mut stmt = conn.prepare(&query)?;
         let pr_iter = stmt.query_map([repo_id], |row| {
+            // Check if user exists (LEFT JOIN may return NULL)
+            let user_id: Option<i64> = row.get(9)?;
+            let user_github_id: Option<i64> = row.get(10)?;
+            let user_login: Option<String> = row.get(11)?;
+
+            // Skip if user doesn't exist
+            if user_id.is_none() || user_github_id.is_none() || user_login.is_none() {
+                return Ok(None);
+            }
+
             let user = User {
-                id: row.get(9)?,
-                github_id: row.get(10)?,
-                login: row.get(11)?,
+                id: user_id.unwrap(),
+                github_id: user_github_id.unwrap(),
+                login: user_login.unwrap(),
                 name: row.get(12)?,
                 avatar_url: row.get(13)?,
-                is_bot: row.get(14)?,
+                is_bot: row.get(14).unwrap_or(false),
                 tracked: false,
                 tracked_at: None,
             };
@@ -247,7 +281,7 @@ pub fn get_timeline_events(
                 "state": "opened"
             });
 
-            Ok(TimelineEvent {
+            Ok(Some(TimelineEvent {
                 id: format!("pr-{}-opened", row.get::<_, i64>(0)?),
                 event_type: "pr_opened".to_string(),
                 timestamp: row.get(4)?,
@@ -256,11 +290,13 @@ pub fn get_timeline_events(
                 description: row.get(3)?,
                 url: None,
                 metadata,
-            })
+            }))
         })?;
 
         for event in pr_iter {
-            events.push(event?);
+            if let Some(e) = event? {
+                events.push(e);
+            }
         }
 
         // PR merged events
@@ -286,13 +322,23 @@ pub fn get_timeline_events(
 
         let mut stmt = conn.prepare(&query)?;
         let pr_merged_iter = stmt.query_map([repo_id], |row| {
+            // Check if user exists (LEFT JOIN may return NULL)
+            let user_id: Option<i64> = row.get(9)?;
+            let user_github_id: Option<i64> = row.get(10)?;
+            let user_login: Option<String> = row.get(11)?;
+
+            // Skip if user doesn't exist
+            if user_id.is_none() || user_github_id.is_none() || user_login.is_none() {
+                return Ok(None);
+            }
+
             let user = User {
-                id: row.get(9)?,
-                github_id: row.get(10)?,
-                login: row.get(11)?,
+                id: user_id.unwrap(),
+                github_id: user_github_id.unwrap(),
+                login: user_login.unwrap(),
                 name: row.get(12)?,
                 avatar_url: row.get(13)?,
-                is_bot: row.get(14)?,
+                is_bot: row.get(14).unwrap_or(false),
                 tracked: false,
                 tracked_at: None,
             };
@@ -305,7 +351,7 @@ pub fn get_timeline_events(
                 "state": "merged"
             });
 
-            Ok(TimelineEvent {
+            Ok(Some(TimelineEvent {
                 id: format!("pr-{}-merged", row.get::<_, i64>(0)?),
                 event_type: "pr_merged".to_string(),
                 timestamp: row.get::<_, String>(4)?,
@@ -314,11 +360,13 @@ pub fn get_timeline_events(
                 description: row.get(3)?,
                 url: None,
                 metadata,
-            })
+            }))
         })?;
 
         for event in pr_merged_iter {
-            events.push(event?);
+            if let Some(e) = event? {
+                events.push(e);
+            }
         }
     }
 
@@ -353,13 +401,23 @@ pub fn get_timeline_events(
 
         let mut stmt = conn.prepare(&query)?;
         let review_iter = stmt.query_map([repo_id], |row| {
+            // Check if user exists (LEFT JOIN may return NULL)
+            let user_id: Option<i64> = row.get(6)?;
+            let user_github_id: Option<i64> = row.get(7)?;
+            let user_login: Option<String> = row.get(8)?;
+
+            // Skip if user doesn't exist
+            if user_id.is_none() || user_github_id.is_none() || user_login.is_none() {
+                return Ok(None);
+            }
+
             let user = User {
-                id: row.get(6)?,
-                github_id: row.get(7)?,
-                login: row.get(8)?,
+                id: user_id.unwrap(),
+                github_id: user_github_id.unwrap(),
+                login: user_login.unwrap(),
                 name: row.get(9)?,
                 avatar_url: row.get(10)?,
-                is_bot: row.get(11)?,
+                is_bot: row.get(11).unwrap_or(false),
                 tracked: false,
                 tracked_at: None,
             };
@@ -369,7 +427,7 @@ pub fn get_timeline_events(
                 "review_state": row.get::<_, String>(2)?
             });
 
-            Ok(TimelineEvent {
+            Ok(Some(TimelineEvent {
                 id: format!("review-{}", row.get::<_, i64>(0)?),
                 event_type: "review".to_string(),
                 timestamp: row.get(1)?,
@@ -378,11 +436,13 @@ pub fn get_timeline_events(
                 description: None,
                 url: None,
                 metadata,
-            })
+            }))
         })?;
 
         for event in review_iter {
-            events.push(event?);
+            if let Some(e) = event? {
+                events.push(e);
+            }
         }
     }
 

@@ -16,11 +16,11 @@ export default function TeamView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Date range - default to last 30 days
+  // Date range - default to last 90 days to match history_days setting
   const [dateRange, setDateRange] = useState(() => {
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
+    startDate.setDate(startDate.getDate() - 90);
     return {
       start: startDate.toISOString().split('T')[0],
       end: endDate.toISOString().split('T')[0],
@@ -54,9 +54,11 @@ export default function TeamView() {
 
     try {
       const users = await invoke<User[]>('get_tracked_users');
+      console.log('Loaded tracked users:', users);
       setTrackedUsers(users);
 
       if (users.length === 0) {
+        console.log('No tracked users found');
         setUserSummaries([]);
         setCollaborationMatrix(null);
         return;
@@ -72,6 +74,7 @@ export default function TeamView() {
           })
         )
       );
+      console.log('Loaded user summaries:', summaries);
       setUserSummaries(summaries);
 
       // Load collaboration matrix if we have multiple users

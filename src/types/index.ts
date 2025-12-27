@@ -64,6 +64,8 @@ export interface User {
   name: string | null;
   avatar_url: string | null;
   is_bot: boolean;
+  tracked?: boolean;
+  tracked_at?: string | null;
 }
 
 export interface UserSummary {

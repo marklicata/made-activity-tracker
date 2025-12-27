@@ -1,21 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { invoke } from '@tauri-apps/api/tauri';
-import { Package, Calendar, CheckCircle2, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Package, Calendar, CheckCircle2, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-
-interface Repository {
-  id: number;
-  owner: string;
-  name: string;
-  github_id: number | null;
-  enabled: boolean;
-  last_synced_at: string | null;
-}
+import { useConfigStore } from '@stores/configStore';
+import RepositoryManager from '@components/project/RepositoryManager';
 
 export default function Projects() {
   const navigate = useNavigate();
-  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const { repositories, loadAll, removeRepository, toggleRepository } = useConfigStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +19,7 @@ export default function Projects() {
     try {
       setLoading(true);
       setError(null);
-      const repos = await invoke<Repository[]>('get_all_repositories');
-      setRepositories(repos);
+      await loadAll();
     } catch (err) {
       console.error('Failed to load repositories:', err);
       setError(err instanceof Error ? err.message : 'Failed to load repositories');
@@ -37,7 +28,7 @@ export default function Projects() {
     }
   }
 
-  function formatSyncTime(timestamp: string | null) {
+  function formatSyncTime(timestamp: string | null | undefined) {
     if (!timestamp) return 'Never synced';
     const date = new Date(timestamp);
     const now = new Date();
@@ -52,8 +43,28 @@ export default function Projects() {
     return `${diffDays}d ago`;
   }
 
-  function handleProjectClick(repo: Repository) {
+  function handleProjectClick(repo: typeof repositories[0]) {
     navigate(`/projects/${repo.owner}/${repo.name}`);
+  }
+
+  async function handleRemoveRepository(e: React.MouseEvent, owner: string, name: string) {
+    e.stopPropagation();
+    if (!confirm(`Remove ${owner}/${name} from tracked repositories?`)) return;
+
+    try {
+      await removeRepository(owner, name);
+    } catch (err) {
+      alert(`Failed to remove repository: ${err}`);
+    }
+  }
+
+  async function handleToggleRepository(e: React.ChangeEvent<HTMLInputElement>, owner: string, name: string) {
+    e.stopPropagation();
+    try {
+      await toggleRepository(owner, name);
+    } catch (err) {
+      alert(`Failed to toggle repository: ${err}`);
+    }
   }
 
   if (loading) {
@@ -80,22 +91,6 @@ export default function Projects() {
     );
   }
 
-  if (repositories.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <Package className="w-16 h-16 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">No Projects Found</h2>
-        <p className="text-gray-500 mb-4">Add repositories in Settings to get started</p>
-        <button
-          onClick={() => navigate('/settings')}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Go to Settings
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -103,41 +98,69 @@ export default function Projects() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
           <p className="text-gray-600">
-            Select a project to view detailed analytics and insights
+            Manage your tracked repositories and view detailed analytics
           </p>
         </div>
 
-        {/* Repository Grid */}
+        {/* Repository Manager */}
+        <div className="mb-8">
+          <RepositoryManager onRepositoryAdded={loadRepositories} />
+        </div>
+
+        {repositories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 bg-white rounded-lg border border-gray-200">
+            <Package className="w-16 h-16 text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">No Projects Found</h2>
+            <p className="text-gray-500">Add a repository above to get started</p>
+          </div>
+        ) : (
+          <>
+            {/* Repository Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {repositories.map((repo) => (
-            <button
+            <div
               key={repo.id}
-              onClick={() => handleProjectClick(repo)}
               className={clsx(
-                'bg-white rounded-lg border-2 p-6 text-left transition-all',
-                'hover:border-blue-500 hover:shadow-lg',
+                'bg-white rounded-lg border-2 p-6 transition-all relative',
                 repo.enabled
                   ? 'border-gray-200'
-                  : 'border-gray-200 opacity-50 cursor-not-allowed'
+                  : 'border-gray-200 opacity-60'
               )}
-              disabled={!repo.enabled}
             >
               {/* Repository Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
-                    <Package className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">
-                      {repo.name}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">
-                      {repo.owner}
-                    </p>
+                  <input
+                    type="checkbox"
+                    checked={repo.enabled}
+                    onChange={(e) => handleToggleRepository(e, repo.owner, repo.name)}
+                    className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    title="Enable/disable repository"
+                  />
+                  <div
+                    className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer"
+                    onClick={() => repo.enabled && handleProjectClick(repo)}
+                  >
+                    <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                      <Package className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">
+                        {repo.name}
+                      </h3>
+                      <p className="text-sm text-gray-500 truncate">
+                        {repo.owner}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <ExternalLink className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <button
+                  onClick={(e) => handleRemoveRepository(e, repo.owner, repo.name)}
+                  className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 ml-2"
+                  title="Remove repository"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
 
               {/* Status */}
@@ -164,13 +187,16 @@ export default function Projects() {
 
               {/* View Details Link */}
               {repo.enabled && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
+                <div
+                  className="mt-4 pt-4 border-t border-gray-200 cursor-pointer"
+                  onClick={() => handleProjectClick(repo)}
+                >
+                  <span className="text-sm font-medium text-blue-600 hover:text-blue-700">
                     View Deep Dive →
                   </span>
                 </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
 
@@ -186,14 +212,10 @@ export default function Projects() {
                 {repositories.filter((r) => r.enabled).length} active
               </p>
             </div>
-            <button
-              onClick={() => navigate('/settings')}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Manage Projects
-            </button>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

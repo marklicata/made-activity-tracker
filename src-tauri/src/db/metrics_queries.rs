@@ -282,10 +282,10 @@ fn get_speed_metrics(conn: &Connection, days: i32) -> Result<SpeedMetrics> {
 fn get_cycle_time_distribution(conn: &Connection, days: i32) -> Result<CycleTimeDistribution> {
     let mut stmt = conn.prepare(
         "SELECT
-            SUM(CASE WHEN hours_to_merge < 4 THEN 1 ELSE 0 END) as under_4h,
-            SUM(CASE WHEN hours_to_merge >= 4 AND hours_to_merge < 12 THEN 1 ELSE 0 END) as h4_to_12,
-            SUM(CASE WHEN hours_to_merge >= 12 AND hours_to_merge < 24 THEN 1 ELSE 0 END) as h12_to_24,
-            SUM(CASE WHEN hours_to_merge >= 24 THEN 1 ELSE 0 END) as over_24h,
+            COALESCE(SUM(CASE WHEN hours_to_merge < 4 THEN 1 ELSE 0 END), 0) as under_4h,
+            COALESCE(SUM(CASE WHEN hours_to_merge >= 4 AND hours_to_merge < 12 THEN 1 ELSE 0 END), 0) as h4_to_12,
+            COALESCE(SUM(CASE WHEN hours_to_merge >= 12 AND hours_to_merge < 24 THEN 1 ELSE 0 END), 0) as h12_to_24,
+            COALESCE(SUM(CASE WHEN hours_to_merge >= 24 THEN 1 ELSE 0 END), 0) as over_24h,
             COUNT(*) as total
          FROM (
             SELECT (julianday(merged_at) - julianday(created_at)) * 24.0 as hours_to_merge
@@ -619,10 +619,10 @@ fn get_pr_type_distribution(conn: &Connection, days: i32) -> Result<Vec<PrTypeBr
 fn get_files_per_pr_distribution(conn: &Connection, days: i32) -> Result<FilesPerPrDistribution> {
     let (range_1_3, range_4_8, range_9_15, range_16_plus, total): (i32, i32, i32, i32, i32) = conn.query_row(
         "SELECT
-            SUM(CASE WHEN changed_files <= 3 THEN 1 ELSE 0 END) as range_1_3,
-            SUM(CASE WHEN changed_files > 3 AND changed_files <= 8 THEN 1 ELSE 0 END) as range_4_8,
-            SUM(CASE WHEN changed_files > 8 AND changed_files <= 15 THEN 1 ELSE 0 END) as range_9_15,
-            SUM(CASE WHEN changed_files > 15 THEN 1 ELSE 0 END) as range_16_plus,
+            COALESCE(SUM(CASE WHEN changed_files <= 3 THEN 1 ELSE 0 END), 0) as range_1_3,
+            COALESCE(SUM(CASE WHEN changed_files > 3 AND changed_files <= 8 THEN 1 ELSE 0 END), 0) as range_4_8,
+            COALESCE(SUM(CASE WHEN changed_files > 8 AND changed_files <= 15 THEN 1 ELSE 0 END), 0) as range_9_15,
+            COALESCE(SUM(CASE WHEN changed_files > 15 THEN 1 ELSE 0 END), 0) as range_16_plus,
             COUNT(*) as total
          FROM pull_requests
          WHERE created_at > datetime('now', '-' || ?1 || ' days')

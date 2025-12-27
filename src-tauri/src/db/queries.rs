@@ -118,6 +118,15 @@ pub fn get_or_create_user(
     tracked: Option<bool>,
     tracked_at: Option<&str>,
 ) -> Result<i64> {
+    // Validate github_id
+    if github_id <= 0 {
+        return Err(anyhow::anyhow!(
+            "Invalid github_id ({}) for user '{}'. GitHub IDs must be positive integers.",
+            github_id,
+            login
+        ));
+    }
+
     conn.execute(
         "INSERT INTO users (github_id, login, name, avatar_url, is_bot, tracked, tracked_at)
          VALUES (?1, ?2, ?3, ?4, COALESCE(?5, FALSE), COALESCE(?6, FALSE), ?7)
@@ -125,9 +134,8 @@ pub fn get_or_create_user(
             login = excluded.login,
             name = COALESCE(excluded.name, name),
             avatar_url = COALESCE(excluded.avatar_url, avatar_url),
-            is_bot = COALESCE(excluded.is_bot, is_bot),
-            tracked = COALESCE(excluded.tracked, tracked),
-            tracked_at = COALESCE(excluded.tracked_at, tracked_at)",
+            is_bot = COALESCE(excluded.is_bot, is_bot)
+            -- Don't update tracked/tracked_at on conflict to preserve explicit tracking status",
         params![
             github_id,
             login,
@@ -1164,4 +1172,60 @@ pub fn get_all_repositories(conn: &Connection) -> Result<Vec<Repository>> {
     .collect::<Result<Vec<_>, _>>()?;
 
     Ok(repos)
+}
+
+// ============================================================================
+// SETTINGS QUERIES
+// ============================================================================
+
+/// Get application settings (always returns the single row)
+pub fn get_settings(conn: &Connection) -> Result<Settings> {
+    let row = conn.query_row(
+        "SELECT id, history_days, excluded_bots, bug_labels, feature_labels, created_at, updated_at
+         FROM settings WHERE id = 1",
+        [],
+        |row| {
+            let excluded_bots_json: String = row.get(2)?;
+            let bug_labels_json: String = row.get(3)?;
+            let feature_labels_json: String = row.get(4)?;
+
+            Ok(Settings {
+                id: row.get(0)?,
+                history_days: row.get(1)?,
+                excluded_bots: serde_json::from_str(&excluded_bots_json).unwrap_or_default(),
+                bug_labels: serde_json::from_str(&bug_labels_json).unwrap_or_default(),
+                feature_labels: serde_json::from_str(&feature_labels_json).unwrap_or_default(),
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    )?;
+
+    Ok(row)
+}
+
+/// Update application settings
+pub fn update_settings(
+    conn: &Connection,
+    history_days: i32,
+    excluded_bots: &[String],
+    bug_labels: &[String],
+    feature_labels: &[String],
+) -> Result<()> {
+    let excluded_bots_json = serde_json::to_string(excluded_bots)?;
+    let bug_labels_json = serde_json::to_string(bug_labels)?;
+    let feature_labels_json = serde_json::to_string(feature_labels)?;
+
+    conn.execute(
+        "UPDATE settings SET
+            history_days = ?1,
+            excluded_bots = ?2,
+            bug_labels = ?3,
+            feature_labels = ?4,
+            updated_at = datetime('now')
+         WHERE id = 1",
+        params![history_days, excluded_bots_json, bug_labels_json, feature_labels_json],
+    )?;
+
+    Ok(())
 }

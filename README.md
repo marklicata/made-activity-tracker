@@ -30,7 +30,24 @@ A desktop application for tracking GitHub team activity across multiple reposito
 - **Lifecycle Metrics**: Project-specific speed, ease, and quality metrics
 - **Project Summary**: Overview cards with key statistics
 
-### ✅ User-Centric View (NEW!)
+### ✅ Amplifier Metrics Dashboard (NEW!)
+- **PR-Based Metrics**: Industry-standard productivity metrics with benchmarks
+- **Productivity Multiplier**: Overall team performance score vs industry average
+- **Speed Metrics**: PRs per day, turnaround time, cycle time distribution
+- **Ease Metrics**: Concurrent projects, context switching, work patterns
+- **Quality Metrics**: PR merge rate, bug ratio, feature work percentage
+- **Benchmark Comparisons**: Industry and elite performer comparisons
+- **Interactive Visualizations**: Distribution charts and trend analysis
+
+### ✅ AI Chat Panel
+- **Natural Language Queries**: Ask questions about your GitHub activity
+- **Context-Aware**: Understands current page and filter state
+- **Database Tools**: Custom tools for querying metrics, searching, and user activity
+- **Amplifier Integration**: Powered by Microsoft Amplifier with local Python tools
+- **Persistent Chat**: Conversation history saved across sessions
+- **Smart Responses**: Provides data-driven insights and recommendations
+
+### ✅ User-Centric View
 - **User Tracking**: Monitor specific team members across all repositories
 - **Activity Dashboard**: Individual user cards with status indicators
 - **Repository Distribution**: See where each user focuses their work
@@ -64,6 +81,16 @@ A desktop application for tracking GitHub team activity across multiple reposito
 4. **GitHub CLI** (optional): For SAML-protected repositories
    - Install from: https://cli.github.com
    - Run: `gh auth login`
+
+5. **Python 3.9+** and **uv** (for AI Chat Panel):
+   - Install Python from: https://www.python.org/downloads/
+   - Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh` (Mac/Linux)
+   - Or: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"` (Windows)
+
+6. **Anthropic or OpenAI API Key** (for AI Chat Panel):
+   - Get Anthropic key: https://console.anthropic.com/
+   - Or OpenAI key: https://platform.openai.com/api-keys
+   - Set environment variable: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
 
 ---
 
@@ -125,6 +152,35 @@ npm run tauri dev
    - Initial sync takes ~2-5 minutes for 25 repos
    - Progress bar shows status
 
+### Dashboard Views
+
+1. **Amplifier Metrics** (recommended)
+   - Toggle to "Amplifier" view in the dashboard
+   - See industry benchmark comparisons
+   - Track productivity multiplier
+   - Monitor Speed, Ease, and Quality metrics
+
+2. **DORA Metrics**
+   - Toggle to "DORA" view for traditional DevOps metrics
+   - Cycle time, lead time, throughput
+
+### AI Chat Assistant
+
+1. **Open Chat Panel**
+   - Click the chat icon in the top navigation
+   - Panel slides in from the right side
+
+2. **Ask Natural Language Questions**
+   - "What's our average cycle time this month?"
+   - "Show me metrics for the backend team"
+   - "Find bugs about authentication"
+   - "What has Alice been working on?"
+
+3. **Context-Aware Queries**
+   - Chat understands your current filters
+   - References the page you're viewing
+   - Provides data-driven insights
+
 ### Team Tracking
 
 1. **Add Team Members**
@@ -176,7 +232,9 @@ made-activity-tracker/
 │   └── utils/                    # Utilities and helpers
 │
 ├── src-tauri/                    # Rust backend
+│   ├── amplifier-tools/          # Python tools for AI chat
 │   └── src/
+│       ├── ai/                   # AI chat panel integration
 │       ├── github/               # Auth, sync, CLI fallback
 │       ├── db/                   # SQLite queries and models
 │       ├── metrics/              # Calculations
@@ -186,10 +244,11 @@ made-activity-tracker/
 │       ├── team/                 # User tracking
 │       └── config/               # Configuration
 │
-├── specs/                        # Feature specifications
-│   ├── PROJECT_DEEP_DIVE.md
-│   ├── USER_CENTRIC_VIEW.md
-│   └── GITHUB_CLI_FALLBACK.md
+├── specs/                        # Planning & reference docs
+│   ├── PLAN.md                   # Project plan and phases
+│   ├── TROUBLESHOOTING.md        # Issue resolution guide
+│   ├── COMPREHENSIVE_TESTING_PLAN.md
+│   └── dashboard_metrics_data_analysis.md
 │
 └── tests/                        # Test suites
 ```
@@ -284,19 +343,20 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 
 ### Completed Features ✅
 - Core platform with GitHub integration
-- Dashboard with advanced filtering
+- Dashboard with advanced filtering and Amplifier-style metrics
+- AI-powered chat panel for natural language queries
 - Project Deep Dive analytics
 - User-Centric View with team tracking
 - Hybrid search with semantic similarity
 - GitHub CLI fallback for SAML repos
 
 ### Upcoming Features
-- AI-powered chat panel for natural language queries
-- Custom metric definitions
 - Webhooks for real-time updates
 - Advanced trend analysis with forecasting
+- Custom metric definitions
 - Export to PDF reports
 - API integration for external tools
+- Team performance insights and recommendations
 
 ---
 
@@ -324,6 +384,12 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 - Check GitHub token is valid: Settings → Login Status
 - Verify repo names: `owner/repo` format
 - Check logs: `%APPDATA%\made-activity-tracker\logs`
+
+### "AI Chat not working"
+- Ensure Python 3.9+ is installed: `python --version`
+- Check API key is set: `echo $ANTHROPIC_API_KEY` (or `$OPENAI_API_KEY`)
+- Install Python dependencies: `cd src-tauri/amplifier-tools && uv pip install -e .`
+- Check Python sidecar logs in app console
 
 ---
 

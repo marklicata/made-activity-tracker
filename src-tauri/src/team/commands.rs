@@ -37,38 +37,48 @@ pub async fn add_tracked_user(
     };
 
     // Now do all database operations without holding lock across await
-    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+    let user = {
+        let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
-    // Insert fetched user if needed
-    if let Some(gh_user) = gh_user {
-        let _ = queries::get_or_create_user(
-            &conn,
-            gh_user.id,
-            &gh_user.login,
-            gh_user.name.as_deref(),
-            Some(&gh_user.avatar_url),
-            None,
-            None,
-            None,
+        // Insert fetched user if needed
+        if let Some(gh_user) = gh_user {
+            let _ = queries::get_or_create_user(
+                &conn,
+                gh_user.id,
+                &gh_user.login,
+                gh_user.name.as_deref(),
+                Some(&gh_user.avatar_url),
+                None,
+                None,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        // Get the user (either existing or just created)
+        let user = queries::get_user_by_login(&conn, &username)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("User '{}' not found", username))?;
+
+        // Mark user as tracked in users table (idempotent)
+        let now = chrono::Utc::now().to_rfc3339();
+        let rows_updated = conn.execute(
+            "UPDATE users SET tracked = 1, tracked_at = COALESCE(tracked_at, ?2) WHERE id = ?1",
+            params![user.id, now],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Failed to mark user tracked: {}", e))?;
+
+        tracing::info!("Marked user '{}' (id: {}) as tracked. Rows updated: {}", user.login, user.id, rows_updated);
+
+        user
+    }; // conn is dropped here automatically
+
+    // Trigger a user-centric sync to fetch this user's activity data
+    tracing::info!("Fetching activity data for tracked user '{}'", username);
+    if let Err(e) = crate::github::sync_user::sync_tracked_user(&app, &state, &token, &username).await {
+        tracing::error!("Failed to sync user activity: {}", e);
+        // Don't fail the command - user was still added successfully
     }
-
-    // Get the user (either existing or just created)
-    let user = queries::get_user_by_login(&conn, &username)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("User '{}' not found", username))?;
-
-    // Mark user as tracked in users table (idempotent)
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "UPDATE users SET tracked = 1, tracked_at = COALESCE(tracked_at, ?2) WHERE id = ?1",
-        params![user.id, now],
-    )
-    .map_err(|e| format!("Failed to mark user tracked: {}", e))?;
-
-    // Drop the connection before returning
-    drop(conn);
 
     Ok(user)
 }
@@ -109,7 +119,7 @@ async fn fetch_github_user(username: &str, token: &str) -> Result<GithubUserResp
         .map_err(|e| format!("Failed to parse GitHub user response: {}", e))
 }
 
-/// Remove a user from the tracked users list
+/// Remove a user from the tracked users list and delete all their data
 #[tauri::command]
 pub async fn remove_tracked_user(
     username: String,
@@ -117,20 +127,48 @@ pub async fn remove_tracked_user(
 ) -> Result<(), String> {
     let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
-    // Unmark user as tracked in users table
-    let rows_affected = conn
-        .execute(
-            "UPDATE users SET tracked = 0, tracked_at = NULL WHERE login = ?1 AND tracked = 1",
+    // First, verify the user exists and is tracked
+    let user_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM users WHERE login = ?1 AND tracked = 1",
             params![username],
+            |row| row.get(0),
         )
-        .map_err(|e| format!("Failed to remove tracked user: {}", e))?;
+        .ok();
 
-    if rows_affected > 0 {
-        tracing::info!("Removed user '{}' from tracked users", username);
-        Ok(())
-    } else {
-        Err(format!("User '{}' was not being tracked", username))
+    let user_id = match user_id {
+        Some(id) => id,
+        None => return Err(format!("User '{}' was not being tracked", username)),
+    };
+
+    tracing::info!("Removing user '{}' (id: {}) from tracked users list", username, user_id);
+
+    // Remove from squad memberships
+    let squad_memberships = conn
+        .execute(
+            "DELETE FROM squad_members WHERE user_id = ?1",
+            params![user_id],
+        )
+        .map_err(|e| format!("Failed to delete squad memberships: {}", e))?;
+    if squad_memberships > 0 {
+        tracing::info!("Removed user '{}' from {} squads", username, squad_memberships);
     }
+
+    // Delete from deprecated tracked_users table if it exists
+    let _ = conn.execute(
+        "DELETE FROM tracked_users WHERE user_id = ?1",
+        params![user_id],
+    );
+
+    // Mark user as not tracked (but keep their data)
+    conn.execute(
+        "UPDATE users SET tracked = 0, tracked_at = NULL WHERE id = ?1",
+        params![user_id],
+    )
+    .map_err(|e| format!("Failed to untrack user: {}", e))?;
+
+    tracing::info!("Successfully removed user '{}' from tracked users list (their contributions remain visible)", username);
+    Ok(())
 }
 
 /// Get all tracked users

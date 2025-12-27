@@ -17,6 +17,14 @@
         "all": false,
         "open": true
       },
+      "dialog": {
+        "all": false,
+        "ask": true,
+        "confirm": true,
+        "message": true,
+        "open": false,
+        "save": false
+      },
       "protocol": {
         "asset": true,
         "assetScope": ["**"]

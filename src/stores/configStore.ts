@@ -1,279 +1,192 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/tauri';
 
+// Match SQLite database models
 interface Repository {
+  id: number;
   owner: string;
   name: string;
+  github_id?: number;
   enabled: boolean;
+  last_synced_at?: string;
 }
 
 interface Squad {
   id: string;
   name: string;
-  members: string[]; // GitHub usernames
-  color: string;
+  members: string[];
+  color?: string;
 }
 
-interface TrackedUser {
-  username: string;
+interface User {
+  id: number;
+  github_id: number;
+  login: string;
+  name?: string;
+  avatar_url?: string;
+  is_bot: boolean;
   tracked: boolean;
-  tracked_at?: string | null;
+  tracked_at?: string;
 }
 
-interface LegacyTrackedUser {
-  username: string;
-  enabled: boolean;
-}
-
-// Match Rust AppConfig structure (new users shape + legacy tracked_users)
-interface AppConfig {
-  repositories: Repository[];
-  squads: Squad[];
-  users?: TrackedUser[];
-  tracked_users?: LegacyTrackedUser[];
+interface Settings {
+  id: number;
   history_days: number;
   excluded_bots: string[];
   bug_labels: string[];
   feature_labels: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 interface ConfigState {
-  // Repos to track
+  // Data
   repositories: Repository[];
-  
-  // Team organization
   squads: Squad[];
-  
-  // Users to track
-  trackedUsers: TrackedUser[];
-  
-  // Sync settings
-  historyDays: number;
-  excludedBots: string[];
-  
-  // Labels for categorization
-  bugLabels: string[];
-  featureLabels: string[];
-  
+  users: User[];
+  settings: Settings | null;
+
+  // Loading state
+  isLoading: boolean;
+
   // Actions
-  addRepository: (owner: string, name: string) => void;
-  removeRepository: (owner: string, name: string) => void;
-  toggleRepository: (owner: string, name: string) => void;
-  
-  addSquad: (squad: Omit<Squad, 'id'>) => void;
-  updateSquad: (id: string, updates: Partial<Squad>) => void;
-  removeSquad: (id: string) => void;
-  
-  addTrackedUser: (username: string) => void;
-  removeTrackedUser: (username: string) => void;
-  toggleTrackedUser: (username: string) => void;
-  
-  setHistoryDays: (days: number) => void;
-  setExcludedBots: (bots: string[]) => void;
-  setBugLabels: (labels: string[]) => void;
-  setFeatureLabels: (labels: string[]) => void;
-  
-  loadConfig: () => Promise<void>;
-  saveConfig: () => Promise<void>;
+  loadAll: () => Promise<void>;
+
+  // Repository actions
+  addRepository: (owner: string, name: string) => Promise<void>;
+  removeRepository: (owner: string, name: string) => Promise<void>;
+  toggleRepository: (owner: string, name: string) => Promise<void>;
+
+  // Squad actions
+  addSquad: (name: string, members: string[], color: string) => Promise<void>;
+  updateSquad: (
+    id: string,
+    updates: { name?: string; members?: string[]; color?: string }
+  ) => Promise<void>;
+  removeSquad: (id: string) => Promise<void>;
+
+  // User actions
+  toggleUserTracked: (username: string) => Promise<void>;
+
+  // Settings actions
+  updateSettings: (settings: {
+    history_days?: number;
+    excluded_bots?: string[];
+    bug_labels?: string[];
+    feature_labels?: string[];
+  }) => Promise<void>;
 }
 
-const normalizeUsername = (username: string) => username.trim().toLowerCase();
+export const useConfigStore = create<ConfigState>((set, get) => ({
+  repositories: [],
+  squads: [],
+  users: [],
+  settings: null,
+  isLoading: false,
 
-const mapTrackedUsersFromConfig = (config: AppConfig): TrackedUser[] => {
-  const normalizedUsers = (config.users ?? []).map((user) => ({
-    username: normalizeUsername(user.username),
-    tracked: Boolean(user.tracked),
-    tracked_at: user.tracked_at ?? null,
-  }));
+  loadAll: async () => {
+    set({ isLoading: true });
+    try {
+      const [repositories, squads, users, settings] = await Promise.all([
+        invoke<Repository[]>('get_all_repositories'),
+        invoke<Squad[]>('get_all_squads_command'),
+        invoke<User[]>('get_all_users'),
+        invoke<Settings>('get_settings'),
+      ]);
 
-  const normalizedLegacy = (config.tracked_users ?? []).map((user) => ({
-    username: normalizeUsername(user.username),
-    tracked: Boolean(user.enabled),
-    tracked_at: null,
-  }));
-
-  const merged = new Map<string, TrackedUser>();
-  normalizedUsers.forEach((user) => merged.set(user.username, user));
-  normalizedLegacy.forEach((user) => {
-    if (!merged.has(user.username)) {
-      merged.set(user.username, user);
+      set({ repositories, squads, users, settings, isLoading: false });
+    } catch (error) {
+      console.error('Failed to load config:', error);
+      set({ isLoading: false });
     }
-  });
+  },
 
-  return Array.from(merged.values());
-};
-
-export const useConfigStore = create<ConfigState>()(
-  persist(
-    (set, get) => ({
-      repositories: [],
-      squads: [],
-      trackedUsers: [],
-      historyDays: 90,
-      excludedBots: [
-        'dependabot[bot]',
-        'dependabot-preview[bot]',
-        'renovate[bot]',
-        'github-actions[bot]',
-        'codecov[bot]',
-      ],
-      bugLabels: ['bug', 'defect', 'fix'],
-      featureLabels: ['feature', 'enhancement', 'feat'],
-
-      addRepository: (owner, name) => {
-        const repos = get().repositories;
-        if (!repos.find((r) => r.owner === owner && r.name === name)) {
-          set({ repositories: [...repos, { owner, name, enabled: true }] });
-          get().saveConfig();
-        }
-      },
-
-      removeRepository: (owner, name) => {
-        set({
-          repositories: get().repositories.filter(
-            (r) => !(r.owner === owner && r.name === name)
-          ),
-        });
-        get().saveConfig();
-      },
-
-      toggleRepository: (owner, name) => {
-        set({
-          repositories: get().repositories.map((r) =>
-            r.owner === owner && r.name === name
-              ? { ...r, enabled: !r.enabled }
-              : r
-          ),
-        });
-        get().saveConfig();
-      },
-
-      addSquad: (squad) => {
-        const id = crypto.randomUUID();
-        set({ squads: [...get().squads, { ...squad, id }] });
-        get().saveConfig();
-      },
-
-      updateSquad: (id, updates) => {
-        set({
-          squads: get().squads.map((s) =>
-            s.id === id ? { ...s, ...updates } : s
-          ),
-        });
-        get().saveConfig();
-      },
-
-      removeSquad: (id) => {
-        set({ squads: get().squads.filter((s) => s.id !== id) });
-        get().saveConfig();
-      },
-
-      addTrackedUser: (username) => {
-        const normalized = normalizeUsername(username);
-        if (!normalized) return;
-
-        const current = get().trackedUsers;
-        if (current.some((user) => user.username === normalized)) return;
-
-        set({ trackedUsers: [...current, { username: normalized, tracked: true, tracked_at: new Date().toISOString() }] });
-        get().saveConfig();
-      },
-
-      removeTrackedUser: (username) => {
-        const normalized = normalizeUsername(username);
-        set({ trackedUsers: get().trackedUsers.filter((u) => u.username !== normalized) });
-        get().saveConfig();
-      },
-
-      toggleTrackedUser: (username) => {
-        const normalized = normalizeUsername(username);
-        set({
-          trackedUsers: get().trackedUsers.map((u) =>
-            u.username === normalized
-              ? {
-                  ...u,
-                  tracked: !u.tracked,
-                  tracked_at: !u.tracked ? u.tracked_at ?? new Date().toISOString() : u.tracked_at,
-                }
-              : u
-          ),
-        });
-        get().saveConfig();
-      },
-
-      setHistoryDays: (days) => {
-        set({ historyDays: days });
-        get().saveConfig();
-      },
-
-      setExcludedBots: (bots) => {
-        set({ excludedBots: bots });
-        get().saveConfig();
-      },
-
-      setBugLabels: (labels) => {
-        set({ bugLabels: labels });
-        get().saveConfig();
-      },
-
-      setFeatureLabels: (labels) => {
-        set({ featureLabels: labels });
-        get().saveConfig();
-      },
-
-      loadConfig: async () => {
-        try {
-          const config = await invoke<AppConfig>('load_config');
-          if (config) {
-            const mergedTrackedUsers = mapTrackedUsersFromConfig(config);
-            set({
-              repositories: config.repositories || [],
-              squads: config.squads || [],
-              trackedUsers: mergedTrackedUsers,
-              historyDays: config.history_days || 90,
-              excludedBots: config.excluded_bots || [],
-              bugLabels: config.bug_labels || [],
-              featureLabels: config.feature_labels || [],
-            });
-          }
-        } catch (error) {
-          console.error('Failed to load config:', error);
-        }
-      },
-
-      saveConfig: async () => {
-        try {
-          const { repositories, squads, trackedUsers, historyDays, excludedBots, bugLabels, featureLabels } = get();
-          const usersPayload = trackedUsers.map(({ username, tracked, tracked_at }) => ({
-            username,
-            tracked,
-            tracked_at: tracked_at ?? null,
-          }));
-          const legacyTrackedUsers = trackedUsers.map(({ username, tracked }) => ({
-            username,
-            enabled: tracked,
-          }));
-
-          // Map to Rust's snake_case structure (users is preferred; tracked_users kept for backward compatibility)
-          const config: AppConfig = {
-            repositories,
-            squads,
-            users: usersPayload,
-            tracked_users: legacyTrackedUsers,
-            history_days: historyDays,
-            excluded_bots: excludedBots,
-            bug_labels: bugLabels,
-            feature_labels: featureLabels,
-          };
-          await invoke('save_config', { config });
-        } catch (error) {
-          console.error('Failed to save config:', error);
-        }
-      },
-    }),
-    {
-      name: 'made-config',
+  addRepository: async (owner, name) => {
+    try {
+      await invoke('add_repository', { owner, name });
+      await get().loadAll(); // Reload to get fresh data
+    } catch (error) {
+      console.error('Failed to add repository:', error);
+      throw error;
     }
-  )
-);
+  },
+
+  removeRepository: async (owner, name) => {
+    try {
+      await invoke('remove_repository', { owner, name });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to remove repository:', error);
+      throw error;
+    }
+  },
+
+  toggleRepository: async (owner, name) => {
+    try {
+      await invoke('toggle_repository', { owner, name });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to toggle repository:', error);
+      throw error;
+    }
+  },
+
+  addSquad: async (name, members, color) => {
+    try {
+      await invoke('add_squad', { name, members, color });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to add squad:', error);
+      throw error;
+    }
+  },
+
+  updateSquad: async (id, updates) => {
+    try {
+      await invoke('update_squad', { id, ...updates });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to update squad:', error);
+      throw error;
+    }
+  },
+
+  removeSquad: async (id) => {
+    try {
+      await invoke('remove_squad', { id });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to remove squad:', error);
+      throw error;
+    }
+  },
+
+  toggleUserTracked: async (username) => {
+    try {
+      await invoke('toggle_user_tracked', { username });
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to toggle user tracked:', error);
+      throw error;
+    }
+  },
+
+  updateSettings: async (updates) => {
+    const current = get().settings;
+    if (!current) return;
+
+    try {
+      await invoke('update_settings', {
+        history_days: updates.history_days ?? current.history_days,
+        excluded_bots: updates.excluded_bots ?? current.excluded_bots,
+        bug_labels: updates.bug_labels ?? current.bug_labels,
+        feature_labels: updates.feature_labels ?? current.feature_labels,
+      });
+
+      await get().loadAll();
+    } catch (error) {
+      console.error('Failed to update settings:', error);
+      throw error;
+    }
+  },
+}));

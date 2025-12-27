@@ -12,6 +12,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     migrate_add_user_tracked_columns(conn)?;
     migrate_add_milestone_repo_github_index(conn)?;
     migrate_backfill_tracked_users(conn)?;
+    migrate_add_settings_table(conn)?;
 
     tracing::info!("Database migrations completed");
     Ok(())
@@ -191,6 +192,46 @@ fn migrate_backfill_tracked_users(conn: &Connection) -> Result<()> {
         )",
         [],
     )?;
+
+    Ok(())
+}
+
+/// Add settings table for application configuration
+fn migrate_add_settings_table(conn: &Connection) -> Result<()> {
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='settings'",
+            [],
+            |row| row.get(0),
+        )
+        .map(|count: i32| count > 0)
+        .unwrap_or(false);
+
+    if !table_exists {
+        tracing::info!("Creating settings table...");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                history_days INTEGER NOT NULL DEFAULT 90,
+                excluded_bots TEXT NOT NULL DEFAULT '[]',
+                bug_labels TEXT NOT NULL DEFAULT '[]',
+                feature_labels TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            INSERT INTO settings (id, history_days, excluded_bots, bug_labels, feature_labels)
+            VALUES (
+                1,
+                90,
+                '["dependabot[bot]", "dependabot-preview[bot]", "renovate[bot]", "github-actions[bot]", "codecov[bot]"]',
+                '["bug", "defect", "fix"]',
+                '["feature", "enhancement", "feat"]'
+            );
+            "#,
+        )?;
+    }
 
     Ok(())
 }
