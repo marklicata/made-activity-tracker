@@ -312,19 +312,19 @@ async fn sync_issues(
             let author_id = if let Some(author) = &issue_node.author {
                 if let Some(github_id) = author.database_id {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, author.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 }
             } else {
                 None
             };
-            
+
             // Get assignee
             let assignee_id = if let Some(assignee) = issue_node.assignees.nodes.first() {
                 if let Some(github_id) = assignee.database_id {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, &assignee.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, &assignee.login, None, assignee.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 }
@@ -448,7 +448,7 @@ async fn sync_pull_requests(
             let author_id = if let Some(author) = &pr_node.author {
                 if let Some(github_id) = author.database_id {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, &author.login, None, author.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 }
@@ -490,7 +490,7 @@ async fn sync_pull_requests(
                 let reviewer_id = if let Some(author) = &review.author {
                     if let Some(github_id) = author.database_id {
                         let conn = state.sqlite.lock().unwrap();
-                        Some(queries::get_or_create_user(&conn, github_id, &author.login, None, None, None, None, None)?)
+                        Some(queries::get_or_create_user(&conn, github_id, &author.login, None, author.avatar_url.as_deref(), None, None, None, Some(true))?)
                     } else {
                         None
                     }
@@ -629,7 +629,7 @@ async fn sync_issues_rest_fallback(
                 // Get or create author
                 let author_id = if let Some(user) = &issue.user {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, user.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 };
@@ -637,7 +637,7 @@ async fn sync_issues_rest_fallback(
                 // Get assignee
                 let assignee_id = if let Some(assignee) = &issue.assignee {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, assignee.id, &assignee.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, assignee.id, &assignee.login, None, assignee.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 };
@@ -725,7 +725,7 @@ async fn sync_pull_requests_rest_fallback(
                 // Get or create author
                 let author_id = if let Some(user) = &pr.user {
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, user.id, &user.login, None, user.avatar_url.as_deref(), None, None, None, Some(true))?)
                 } else {
                     None
                 };

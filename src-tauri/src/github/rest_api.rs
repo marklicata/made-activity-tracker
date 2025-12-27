@@ -183,6 +183,7 @@ pub struct RestMilestone {
 pub struct RestUser {
     pub id: i64,
     pub login: String,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -3,24 +3,11 @@
     windows_subsystem = "windows"
 )]
 
-mod ai;
-mod db;
-mod embeddings;
-mod github;
-mod metrics;
-mod project;
-mod search;
-mod team;
-
+use made_activity_tracker::*;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex as TokioMutex;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-// AI-specific application state
-pub struct AiState {
-    pub amplifier_client: Arc<TokioMutex<ai::AmplifierClient>>,
-}
 
 fn main() {
     // Load API keys from project keys.env file if it exists
@@ -62,40 +49,56 @@ fn main() {
             });
 
             // Initialize Amplifier sidecar
+            tracing::info!("=== Initializing AI Features ===");
             let amplifier_client = tauri::async_runtime::block_on(async {
                 // Get database path
-                let db_path = db::get_db_path(&app_handle)
-                    .expect("Failed to get database path");
+                tracing::info!("Getting database path for Amplifier...");
+                let db_path = match db::get_db_path(&app_handle) {
+                    Ok(path) => {
+                        tracing::info!("✓ Database path: {:?}", path);
+                        path
+                    }
+                    Err(e) => {
+                        tracing::error!("✗ Failed to get database path: {}", e);
+                        tracing::error!("AI features will be disabled");
+                        return None;
+                    }
+                };
 
                 // Start sidecar
+                tracing::info!("Starting Amplifier sidecar process...");
                 let mut sidecar = ai::AmplifierSidecar::new();
                 match sidecar.start(db_path) {
                     Ok(()) => {
-                        tracing::info!("Amplifier sidecar started on port {}", sidecar.port);
+                        tracing::info!("✓ Amplifier sidecar started successfully on port {}", sidecar.port);
 
                         // Create client
+                        tracing::info!("Creating Amplifier HTTP client...");
                         let client = ai::AmplifierClient::new(sidecar.port, sidecar.auth_token.clone());
 
                         // Health check
+                        tracing::info!("Running initial health check...");
                         match client.health_check().await {
                             Ok(true) => {
-                                tracing::info!("Amplifier health check passed");
+                                tracing::info!("✓ Amplifier health check passed - AI features ready");
                             }
                             Ok(false) => {
-                                tracing::warn!("Amplifier health check failed");
+                                tracing::warn!("⚠ Amplifier health check returned false - server may not be ready");
                             }
                             Err(e) => {
-                                tracing::error!("Amplifier health check error: {}", e);
+                                tracing::error!("✗ Amplifier health check error: {}", e);
+                                tracing::error!("AI features may not work correctly");
                             }
                         }
 
                         // Keep sidecar alive by moving it into app state
+                        tracing::debug!("Registering sidecar in app state...");
                         app.manage(sidecar);
 
                         Some(client)
                     }
                     Err(e) => {
-                        tracing::error!("Failed to start Amplifier sidecar: {}", e);
+                        tracing::error!("✗ Failed to start Amplifier sidecar: {}", e);
                         tracing::warn!("AI features will be disabled");
                         None
                     }
@@ -104,10 +107,14 @@ fn main() {
 
             // Create and manage AI state if we have a client
             if let Some(client) = amplifier_client {
+                tracing::info!("Creating AI state and registering commands...");
                 let ai_state = AiState {
                     amplifier_client: Arc::new(TokioMutex::new(client)),
                 };
                 app.manage(ai_state);
+                tracing::info!("✓ AI features initialized successfully");
+            } else {
+                tracing::warn!("⚠ AI features are not available - client not created");
             }
 
             Ok(())
@@ -166,6 +173,7 @@ fn main() {
             team::commands::add_tracked_user,
             team::commands::remove_tracked_user,
             team::commands::get_tracked_users,
+            team::commands::update_user_tracked_status,
             team::commands::get_user_summary,
             team::commands::get_user_activity_timeline,
             team::commands::get_user_repository_distribution,

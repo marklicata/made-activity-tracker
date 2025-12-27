@@ -180,7 +180,7 @@ async fn sync_user_prs(
                 if let Some(github_id) = author["id"].as_i64() {
                     let login = author["login"].as_str().unwrap_or("");
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None, None)?)
                 } else {
                     None
                 }
@@ -312,7 +312,7 @@ async fn sync_user_issues(
                 if let Some(github_id) = author["id"].as_i64() {
                     let login = author["login"].as_str().unwrap_or("");
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None, None)?)
                 } else {
                     None
                 }
@@ -325,7 +325,7 @@ async fn sync_user_issues(
                 if let Some(github_id) = assignee["id"].as_i64() {
                     let login = assignee["login"].as_str().unwrap_or("");
                     let conn = state.sqlite.lock().unwrap();
-                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None)?)
+                    Some(queries::get_or_create_user(&conn, github_id, login, None, None, None, None, None, None)?)
                 } else {
                     None
                 }
