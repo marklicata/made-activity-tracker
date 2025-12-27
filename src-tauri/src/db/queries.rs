@@ -117,6 +117,7 @@ pub fn get_or_create_user(
     is_bot: Option<bool>,
     tracked: Option<bool>,
     tracked_at: Option<&str>,
+    track_if_new: Option<bool>,
 ) -> Result<i64> {
     // Validate github_id
     if github_id <= 0 {
@@ -127,9 +128,19 @@ pub fn get_or_create_user(
         ));
     }
 
+    // Determine tracked value for INSERT: prefer track_if_new, then tracked, then default to false
+    let insert_tracked = track_if_new.or(tracked).unwrap_or(false);
+
+    // Generate tracked_at timestamp if tracked is true and no timestamp provided
+    let insert_tracked_at = if insert_tracked && tracked_at.is_none() {
+        Some(chrono::Utc::now().to_rfc3339())
+    } else {
+        tracked_at.map(|s| s.to_string())
+    };
+
     conn.execute(
         "INSERT INTO users (github_id, login, name, avatar_url, is_bot, tracked, tracked_at)
-         VALUES (?1, ?2, ?3, ?4, COALESCE(?5, FALSE), COALESCE(?6, FALSE), ?7)
+         VALUES (?1, ?2, ?3, ?4, COALESCE(?5, FALSE), ?6, ?7)
          ON CONFLICT(github_id) DO UPDATE SET
             login = excluded.login,
             name = COALESCE(excluded.name, name),
@@ -142,8 +153,8 @@ pub fn get_or_create_user(
             name,
             avatar_url,
             is_bot,
-            tracked,
-            tracked_at,
+            insert_tracked,
+            insert_tracked_at,
         ],
     )?;
 

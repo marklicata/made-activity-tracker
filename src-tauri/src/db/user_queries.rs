@@ -58,7 +58,7 @@ pub fn get_user_summary_data(
 
     // Get user info
     let user: User = conn.query_row(
-        "SELECT id, github_id, login, name, avatar_url, is_bot FROM users WHERE id = ?1",
+        "SELECT id, github_id, login, name, avatar_url, is_bot, tracked, tracked_at FROM users WHERE id = ?1",
         params![user_id],
         |row| {
             Ok(User {
@@ -68,8 +68,8 @@ pub fn get_user_summary_data(
                 name: row.get(3)?,
                 avatar_url: row.get(4)?,
                 is_bot: row.get(5)?,
-                tracked: false,
-                tracked_at: None,
+                tracked: row.get(6)?,
+                tracked_at: row.get(7)?,
             })
         },
     )?;

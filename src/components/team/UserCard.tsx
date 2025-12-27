@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/tauri';
 import { UserSummary } from '@/types';
@@ -12,6 +13,8 @@ interface UserCardProps {
 export default function UserCard({ summary, onRemove }: UserCardProps) {
   const navigate = useNavigate();
   const { user, activity_status, last_activity } = summary;
+  const [isTracked, setIsTracked] = useState(user.tracked);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const statusColors = {
     active: 'bg-green-100 text-green-800',
@@ -34,6 +37,26 @@ export default function UserCard({ summary, onRemove }: UserCardProps) {
       onRemove();
     } catch (err) {
       alert(`Failed to remove user: ${err}`);
+    }
+  };
+
+  const handleToggleTracked = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newTrackedStatus = !isTracked;
+    setIsUpdating(true);
+
+    try {
+      await invoke('update_user_tracked_status', {
+        username: user.login,
+        tracked: newTrackedStatus,
+      });
+      setIsTracked(newTrackedStatus);
+    } catch (err) {
+      alert(`Failed to update tracking status: ${err}`);
+      // Revert on error
+      setIsTracked(!newTrackedStatus);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -69,13 +92,36 @@ export default function UserCard({ summary, onRemove }: UserCardProps) {
             <p className="text-sm text-gray-500">@{user.login}</p>
           </div>
         </div>
-        <button
-          onClick={handleRemove}
-          className="text-gray-400 hover:text-red-600 transition-colors"
-          title="Remove from tracked users"
-        >
-          <Trash2 size={16} />
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Toggle Switch */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleTracked}
+              disabled={isUpdating}
+              className={`${
+                isTracked ? 'bg-blue-600' : 'bg-gray-200'
+              } relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50`}
+              title={isTracked ? 'Tracking enabled' : 'Tracking disabled'}
+            >
+              <span
+                className={`${
+                  isTracked ? 'translate-x-6' : 'translate-x-1'
+                } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+              />
+            </button>
+            <span className="text-xs text-gray-600 whitespace-nowrap">
+              {isTracked ? 'Tracking' : 'Not tracking'}
+            </span>
+          </div>
+          {/* Remove Button */}
+          <button
+            onClick={handleRemove}
+            className="text-gray-400 hover:text-red-600 transition-colors"
+            title="Remove from list"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Activity Status */}

@@ -37,6 +37,7 @@ pub async fn add_tracked_user(
     };
 
     // Now do all database operations without holding lock across await
+    let now = chrono::Utc::now().to_rfc3339();
     let user = {
         let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
 
@@ -49,8 +50,9 @@ pub async fn add_tracked_user(
                 gh_user.name.as_deref(),
                 Some(&gh_user.avatar_url),
                 None,
-                None,
-                None,
+                Some(true),     // tracked (explicit)
+                Some(&now),     // tracked_at (explicit)
+                None,           // track_if_new (not needed, using explicit)
             )
             .map_err(|e| e.to_string())?;
         }
@@ -61,7 +63,6 @@ pub async fn add_tracked_user(
             .ok_or_else(|| format!("User '{}' not found", username))?;
 
         // Mark user as tracked in users table (idempotent)
-        let now = chrono::Utc::now().to_rfc3339();
         let rows_updated = conn.execute(
             "UPDATE users SET tracked = 1, tracked_at = COALESCE(tracked_at, ?2) WHERE id = ?1",
             params![user.id, now],
@@ -180,8 +181,7 @@ pub async fn get_tracked_users(state: State<'_, AppState>) -> Result<Vec<User>, 
         .prepare(
             "SELECT id, github_id, login, name, avatar_url, is_bot, tracked, tracked_at
              FROM users
-             WHERE tracked = 1
-             ORDER BY tracked_at DESC",
+             ORDER BY tracked DESC, login ASC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -203,6 +203,51 @@ pub async fn get_tracked_users(state: State<'_, AppState>) -> Result<Vec<User>, 
         .map_err(|e| e.to_string())?;
 
     Ok(users)
+}
+
+/// Update the tracked status for a user
+#[tauri::command]
+pub async fn update_user_tracked_status(
+    username: String,
+    tracked: bool,
+    state: State<'_, AppState>,
+) -> Result<User, String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    // Find user by username
+    let user = queries::get_user_by_login(&conn, &username)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("User '{}' not found", username))?;
+
+    // Update tracked status
+    let now = chrono::Utc::now().to_rfc3339();
+    let rows_updated = if tracked {
+        // Set tracked = true, set tracked_at to now if it's not already set
+        conn.execute(
+            "UPDATE users SET tracked = 1, tracked_at = COALESCE(tracked_at, ?1) WHERE id = ?2",
+            params![now, user.id],
+        )
+    } else {
+        // Set tracked = false, clear tracked_at
+        conn.execute(
+            "UPDATE users SET tracked = 0, tracked_at = NULL WHERE id = ?1",
+            params![user.id],
+        )
+    }
+    .map_err(|e| format!("Failed to update user tracking status: {}", e))?;
+
+    tracing::info!(
+        "Updated tracking status for '{}' (id: {}) to {}. Rows updated: {}",
+        user.login,
+        user.id,
+        tracked,
+        rows_updated
+    );
+
+    // Fetch and return updated user
+    queries::get_user_by_login(&conn, &username)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("User '{}' not found after update", username))
 }
 
 /// Get summary statistics for a user

@@ -26,20 +26,47 @@ const ChatPanel: React.FC = () => {
   // Check for API keys when panel opens
   useEffect(() => {
     if (isOpen) {
+      console.log('[ChatPanel] Panel opened, checking API keys and connection...');
       checkApiKeys();
     }
   }, [isOpen]);
 
   const checkApiKeys = async () => {
+    console.log('[ChatPanel] Starting API key check...');
     setCheckingKeys(true);
     try {
+      console.log('[ChatPanel] Invoking check_api_keys command...');
       const status = await invoke<ApiKeyStatus>('check_api_keys');
-      setNeedsApiKey(!status.has_anthropic && !status.has_openai);
+      console.log('[ChatPanel] API key status:', status);
+
+      const needsKey = !status.has_anthropic && !status.has_openai;
+      setNeedsApiKey(needsKey);
+
+      if (needsKey) {
+        console.warn('[ChatPanel] ⚠ No API keys found');
+      } else {
+        console.log('[ChatPanel] ✓ API keys available');
+
+        // Also check backend health
+        console.log('[ChatPanel] Checking Amplifier backend health...');
+        try {
+          const isHealthy = await invoke<boolean>('check_amplifier_health');
+          console.log('[ChatPanel] Amplifier health check result:', isHealthy);
+          if (!isHealthy) {
+            console.error('[ChatPanel] ✗ Amplifier backend health check failed');
+          } else {
+            console.log('[ChatPanel] ✓ Amplifier backend is healthy');
+          }
+        } catch (healthErr) {
+          console.error('[ChatPanel] ✗ Amplifier health check error:', healthErr);
+        }
+      }
     } catch (err) {
-      console.error('Failed to check API keys:', err);
+      console.error('[ChatPanel] ✗ Failed to check API keys:', err);
       setNeedsApiKey(true);
     } finally {
       setCheckingKeys(false);
+      console.log('[ChatPanel] API key check complete');
     }
   };
 

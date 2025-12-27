@@ -153,6 +153,7 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
                     login
                     ... on User {
                         databaseId
+                        avatarUrl
                     }
                 }
                 assignees(first: 1) {
@@ -160,6 +161,7 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
                         login
                         ... on User {
                             databaseId
+                            avatarUrl
                         }
                     }
                 }
@@ -206,6 +208,7 @@ query($owner: String!, $name: String!, $cursor: String) {
                     login
                     ... on User {
                         databaseId
+                        avatarUrl
                     }
                 }
                 labels(first: 20) {
@@ -223,6 +226,7 @@ query($owner: String!, $name: String!, $cursor: String) {
                             login
                             ... on User {
                                 databaseId
+                                avatarUrl
                             }
                         }
                     }
@@ -410,6 +414,7 @@ pub struct PageInfo {
 pub struct Actor {
     pub login: String,
     pub database_id: Option<i64>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
