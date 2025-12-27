@@ -135,6 +135,7 @@ fn main() {
             db::commands::add_repository,
             db::commands::remove_repository,
             db::commands::toggle_repository,
+            db::commands::clear_all_database_data,
             db::commands::add_squad,
             db::commands::update_squad,
             db::commands::remove_squad,

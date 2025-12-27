@@ -6,8 +6,10 @@ import {
   Clock,
   Bot,
   Tag,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/tauri';
 import { useConfigStore } from '@stores/configStore';
 
 export default function Settings() {
@@ -64,6 +66,43 @@ export default function Settings() {
     if (newFeatureLabel && !settings.feature_labels.includes(newFeatureLabel)) {
       updateSettings({ feature_labels: [...settings.feature_labels, newFeatureLabel] });
       setNewFeatureLabel('');
+    }
+  };
+
+  const handleClearDatabase = async () => {
+    const confirmation = window.confirm(
+      '⚠️ WARNING: This will permanently delete ALL data from the database!\n\n' +
+      'This includes:\n' +
+      '• All repositories\n' +
+      '• All users\n' +
+      '• All pull requests and issues\n' +
+      '• All reviews and metrics\n' +
+      '• All squads\n\n' +
+      'Your settings (history days, labels, bots) will be preserved.\n\n' +
+      'This action CANNOT be undone!\n\n' +
+      'Type "DELETE ALL DATA" in the next prompt to confirm.'
+    );
+
+    if (!confirmation) return;
+
+    const typeConfirmation = window.prompt(
+      'Type "DELETE ALL DATA" (exactly as shown) to confirm:'
+    );
+
+    if (typeConfirmation !== 'DELETE ALL DATA') {
+      alert('Database clear cancelled. The text did not match.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await invoke('clear_all_database_data');
+      alert('Database cleared successfully! All data has been removed.');
+      window.location.reload(); // Reload to reset all UI state
+    } catch (err) {
+      alert(`Failed to clear database: ${err}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -156,7 +195,8 @@ export default function Settings() {
             step="30"
             value={settings?.history_days ?? 90}
             onChange={(e) => updateSettings({ history_days: Number(e.target.value) })}
-            className="flex-1"
+            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            style={{ WebkitAppearance: 'none' }}
           />
           <span className="text-lg font-medium w-24 text-right">{settings?.history_days ?? 90} days</span>
         </div>
@@ -270,6 +310,28 @@ export default function Settings() {
             </button>
           </div>
         </div>
+      </section>
+
+      {/* Danger Zone */}
+      <section className="mb-8 bg-red-50 rounded-xl shadow-sm border-2 border-red-200 p-6">
+        <h2 className="text-lg font-semibold text-red-800 mb-4 flex items-center gap-2">
+          <AlertTriangle size={20} className="text-red-600" />
+          Danger Zone
+        </h2>
+        <p className="text-sm text-red-700 mb-4">
+          Permanently delete all data from the database. This will remove all repositories,
+          users, pull requests, issues, reviews, and metrics. Your settings will be preserved.
+        </p>
+        <button
+          onClick={handleClearDatabase}
+          className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+        >
+          <Trash2 size={18} />
+          Clear All Database Data
+        </button>
+        <p className="text-xs text-red-600 mt-3">
+          ⚠️ This action cannot be undone. You will be asked to confirm twice.
+        </p>
       </section>
     </div>
   );

@@ -7,7 +7,7 @@ dependencies = [
     "amplifier-core @ git+https://github.com/microsoft/amplifier-core",
     "amplifier-profiles @ git+https://github.com/microsoft/amplifier-profiles",
     "anthropic>=0.18.0",
-    "flask>=3.0.0",
+    "flask[async]>=3.0.0",
     "flask-cors>=4.0.0",
 ]
 
