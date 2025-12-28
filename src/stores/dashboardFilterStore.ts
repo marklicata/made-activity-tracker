@@ -48,7 +48,7 @@ export const useDashboardFilterStore = create<DashboardFilterState>()(
         set({
           filters: {
             ...get().filters,
-            repositoryIds: repositoryIds || undefined,
+            repositoryIds: repositoryIds && repositoryIds.length > 0 ? repositoryIds : undefined,
           },
         });
       },

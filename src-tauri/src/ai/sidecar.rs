@@ -70,11 +70,13 @@ impl AmplifierSidecar {
         // Pass through API keys
         let mut has_api_key = false;
         if let Ok(key) = env::var("ANTHROPIC_API_KEY") {
+            tracing::info!("Found ANTHROPIC_API_KEY");
             cmd.env("ANTHROPIC_API_KEY", key);
             tracing::info!("  ✓ ANTHROPIC_API_KEY is set");
             has_api_key = true;
         }
         if let Ok(key) = env::var("OPENAI_API_KEY") {
+            tracing::info!("Found OPENAI_API_KEY");
             cmd.env("OPENAI_API_KEY", key);
             tracing::info!("  ✓ OPENAI_API_KEY is set");
             has_api_key = true;

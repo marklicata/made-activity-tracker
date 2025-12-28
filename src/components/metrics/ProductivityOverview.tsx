@@ -56,7 +56,7 @@ export function ProductivityOverview({ overview }: ProductivityOverviewProps) {
         <div className="flex flex-col">
           <span className="text-xl font-semibold">{getTierText()}</span>
           <span className="text-sm opacity-75">
-            {multiplier > 1 ? `${((multiplier - 1) * 100).toFixed(0)}% above baseline` : `${((1 - multiplier) * 100).toFixed(0)}% below baseline`}
+            {multiplier >= 1 ? `${((multiplier - 1) * 100).toFixed(0)}% above baseline` : `${((1 - multiplier) * 100).toFixed(0)}% below baseline`}
           </span>
         </div>
       </div>

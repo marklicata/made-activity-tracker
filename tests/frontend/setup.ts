@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { setupTauriMocks, setupTauriEventMocks } from './mocks/tauri';
+import { beforeEach, afterEach, vi } from 'vitest';
 
 // Setup Tauri mocks before each test
 beforeEach(() => {

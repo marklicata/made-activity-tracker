@@ -4,9 +4,10 @@
 import asyncio
 import os
 import sys
-from flask import Flask, request, jsonify, Response
+from pathlib import Path
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from amplifier_core import AmplifierSession
+from amplifier_foundation import load_bundle
 from made_activity_tools import set_db_path
 
 app = Flask(__name__)
@@ -22,26 +23,8 @@ PROVIDER = 'anthropic' if os.environ.get('ANTHROPIC_API_KEY') else 'openai'
 if DB_PATH:
     set_db_path(DB_PATH)
 
-# Amplifier configuration
-AMPLIFIER_CONFIG = {
-    "session": {
-        "orchestrator": "loop-basic",
-        "context": "context-simple"
-    },
-    "providers": [
-        {
-            "module": f"provider-{PROVIDER}",
-            "config": {
-                "api_key": API_KEY
-            }
-        }
-    ],
-    "tools": [
-        {"module": "made_activity_tools.metrics_tool"},
-        {"module": "made_activity_tools.search_tool"},
-        {"module": "made_activity_tools.user_activity_tool"}
-    ]
-}
+# Global session holder
+_amplifier_session = None
 
 
 def check_auth():
@@ -61,6 +44,37 @@ def health():
     })
 
 
+async def get_amplifier_session():
+    """Get or create Amplifier session."""
+    global _amplifier_session
+    if _amplifier_session is None:
+        # Ensure API key is in environment for provider modules to pick up
+        if PROVIDER == 'anthropic' and API_KEY:
+            os.environ['ANTHROPIC_API_KEY'] = API_KEY
+        elif PROVIDER == 'openai' and API_KEY:
+            os.environ['OPENAI_API_KEY'] = API_KEY
+
+        # Get the directory where this script is located
+        server_dir = Path(__file__).parent.parent.parent.resolve()
+        
+        # Load local bundle
+        bundle_path = server_dir / "bundle.md"
+        base_bundle = await load_bundle(str(bundle_path))
+        
+        # Load provider configuration
+        provider_path = server_dir / "providers" / f"{PROVIDER}.yaml"
+        provider_bundle = await load_bundle(str(provider_path))
+        
+        # Compose bundles (foundation from includes + provider + tools)
+        composed = base_bundle.compose(provider_bundle)
+        
+        # Prepare and create session
+        prepared = await composed.prepare()
+        _amplifier_session = await prepared.create_session()
+
+    return _amplifier_session
+
+
 @app.route('/chat', methods=['POST'])
 async def chat():
     """Process chat message through Amplifier."""
@@ -75,20 +89,40 @@ async def chat():
         user_message = data.get('message', '')
         app_context = data.get('context', {})
 
-        # Build system prompt with app context
-        system_prompt = build_system_prompt(app_context)
+        # Build context message with app state
+        context_parts = []
+        
+        if app_context.get('current_page'):
+            context_parts.append(f"User is viewing: {app_context['current_page']}")
 
-        # Create Amplifier session and execute
-        async with AmplifierSession(config=AMPLIFIER_CONFIG) as session:
-            # Add system context as first message if needed
-            full_prompt = f"{system_prompt}\n\nUser: {user_message}"
+        filters = app_context.get('filters', {})
+        if date_range := filters.get('date_range'):
+            context_parts.append(f"Date range: {date_range['start']} to {date_range['end']}")
+        if repos := filters.get('repositories'):
+            context_parts.append(f"Filtered repositories: {', '.join(repos)}")
+        if squads := filters.get('squads'):
+            context_parts.append(f"Filtered squads: {', '.join(squads)}")
+        if users := filters.get('users'):
+            context_parts.append(f"Filtered users: {', '.join(users)}")
 
-            response = await session.execute(full_prompt)
-
-            return jsonify({
-                'response': response,
-                'context': app_context
+        # Get session and execute
+        session = await get_amplifier_session()
+        
+        # Add context as a user message if we have any
+        if context_parts:
+            context_message = "Current app context:\n" + "\n".join(context_parts)
+            await session.context.add_message({
+                "role": "user",
+                "content": context_message
             })
+        
+        # Execute user message
+        response = await session.execute(user_message)
+
+        return jsonify({
+            'response': response,
+            'context': app_context
+        })
 
     except Exception as e:
         print(f"Error in chat: {e}", file=sys.stderr)
@@ -97,37 +131,19 @@ async def chat():
         return jsonify({'error': str(e)}), 500
 
 
-def build_system_prompt(context: dict) -> str:
-    """Build system prompt from app context."""
-    parts = ["You are an AI assistant helping users analyze GitHub activity data."]
-
-    if context.get('current_page'):
-        parts.append(f"The user is currently viewing: {context['current_page']}")
-
-    filters = context.get('filters', {})
-
-    if date_range := filters.get('date_range'):
-        parts.append(f"Date range: {date_range['start']} to {date_range['end']}")
-
-    if repos := filters.get('repositories'):
-        parts.append(f"Filtered repositories: {', '.join(repos)}")
-
-    if squads := filters.get('squads'):
-        parts.append(f"Filtered squads: {', '.join(squads)}")
-
-    if users := filters.get('users'):
-        parts.append(f"Filtered users: {', '.join(users)}")
-
-    parts.append("\nUse the available tools to query the database and provide accurate answers.")
-
-    return "\n".join(parts)
-
-
 @app.route('/shutdown', methods=['POST'])
-def shutdown():
-    """Shutdown server."""
+async def shutdown():
+    """Shutdown server and cleanup."""
     if not check_auth():
         return jsonify({'error': 'Unauthorized'}), 401
+    
+    global _amplifier_session
+    if _amplifier_session:
+        try:
+            await _amplifier_session.cleanup()
+        except Exception as e:
+            print(f"Error during cleanup: {e}", file=sys.stderr)
+        _amplifier_session = None
 
     func = request.environ.get('werkzeug.server.shutdown')
     if func:

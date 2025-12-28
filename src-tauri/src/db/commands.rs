@@ -108,6 +108,66 @@ pub async fn remove_repository(
 }
 
 #[tauri::command]
+pub async fn clear_all_database_data(state: State<'_, AppState>) -> Result<(), String> {
+    let conn = state.sqlite.lock().map_err(|e| e.to_string())?;
+
+    tracing::warn!("Clearing all database data...");
+
+    // Delete in order to respect foreign key constraints
+    // Start with tables that have no dependencies, work up to parent tables
+
+    // Delete PR reviews (references pull_requests)
+    conn.execute("DELETE FROM pr_reviews", [])
+        .map_err(|e| format!("Failed to clear pr_reviews: {}", e))?;
+
+    // Delete pull requests (references repositories, users)
+    conn.execute("DELETE FROM pull_requests", [])
+        .map_err(|e| format!("Failed to clear pull_requests: {}", e))?;
+
+    // Delete issues (references repositories, users, milestones)
+    conn.execute("DELETE FROM issues", [])
+        .map_err(|e| format!("Failed to clear issues: {}", e))?;
+
+    // Delete milestones (references repositories)
+    conn.execute("DELETE FROM milestones", [])
+        .map_err(|e| format!("Failed to clear milestones: {}", e))?;
+
+    // Delete squad members (references squads, users)
+    conn.execute("DELETE FROM squad_members", [])
+        .map_err(|e| format!("Failed to clear squad_members: {}", e))?;
+
+    // Delete squads
+    conn.execute("DELETE FROM squads", [])
+        .map_err(|e| format!("Failed to clear squads: {}", e))?;
+
+    // Delete tracked_users (deprecated table, references users)
+    conn.execute("DELETE FROM tracked_users", [])
+        .map_err(|e| format!("Failed to clear tracked_users: {}", e))?;
+
+    // Delete sync log (references repositories)
+    conn.execute("DELETE FROM sync_log", [])
+        .map_err(|e| format!("Failed to clear sync_log: {}", e))?;
+
+    // Delete metrics snapshots
+    conn.execute("DELETE FROM metrics_snapshots", [])
+        .map_err(|e| format!("Failed to clear metrics_snapshots: {}", e))?;
+
+    // Delete repositories (parent table)
+    conn.execute("DELETE FROM repositories", [])
+        .map_err(|e| format!("Failed to clear repositories: {}", e))?;
+
+    // Delete users (parent table)
+    conn.execute("DELETE FROM users", [])
+        .map_err(|e| format!("Failed to clear users: {}", e))?;
+
+    // Reset settings to defaults (optional - keep settings)
+    // We don't delete from settings table to preserve user preferences
+
+    tracing::info!("All database data cleared successfully");
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn toggle_repository(
     owner: String,
     name: String,

@@ -177,10 +177,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
     try {
       await invoke('update_settings', {
-        history_days: updates.history_days ?? current.history_days,
-        excluded_bots: updates.excluded_bots ?? current.excluded_bots,
-        bug_labels: updates.bug_labels ?? current.bug_labels,
-        feature_labels: updates.feature_labels ?? current.feature_labels,
+        historyDays: updates.history_days ?? current.history_days,
+        excludedBots: updates.excluded_bots ?? current.excluded_bots,
+        bugLabels: updates.bug_labels ?? current.bug_labels,
+        featureLabels: updates.feature_labels ?? current.feature_labels,
       });
 
       await get().loadAll();

@@ -137,9 +137,9 @@ mod tests {
             milestone_id: None,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
+            sync_updated_at: None,
             closed_at: None,
             labels: vec!["feature".to_string(), "auth".to_string()],
-            embedding_id: None,
         };
         
         let text = issue_to_embedding_text(&issue);
