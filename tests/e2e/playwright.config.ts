@@ -22,8 +22,13 @@ export default defineConfig({
 
   // Run dev server before tests
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev -- --config vite.config.ts',
     url: 'http://localhost:1500',
     reuseExistingServer: !process.env.CI,
+    timeout: 120000,
   },
+  
+  // Ensure Playwright doesn't pick up vitest globals
+  globalSetup: undefined,
+  globalTeardown: undefined,
 });

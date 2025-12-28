@@ -1,0 +1,12 @@
+bundle:
+  name: provider-openai
+  version: 1.0.0
+  description: OpenAI GPT provider configuration
+
+providers:
+  - module: provider-openai
+    source: git+https://github.com/microsoft/amplifier-module-provider-openai@main
+    config:
+      default_model: gpt-4o
+      max_tokens: 8000
+      temperature: 0.7

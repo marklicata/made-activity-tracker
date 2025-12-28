@@ -82,10 +82,9 @@ A desktop application for tracking GitHub team activity across multiple reposito
    - Install from: https://cli.github.com
    - Run: `gh auth login`
 
-5. **Python 3.9+** and **uv** (for AI Chat Panel):
+5. **Python 3.9+** (for AI Chat Panel):
    - Install Python from: https://www.python.org/downloads/
-   - Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh` (Mac/Linux)
-   - Or: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"` (Windows)
+   - Verify installation: `python --version`
 
 6. **Anthropic or OpenAI API Key** (for AI Chat Panel):
    - Get Anthropic key: https://console.anthropic.com/
@@ -388,8 +387,15 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 ### "AI Chat not working"
 - Ensure Python 3.9+ is installed: `python --version`
 - Check API key is set: `echo $ANTHROPIC_API_KEY` (or `$OPENAI_API_KEY`)
-- Install Python dependencies: `cd src-tauri/amplifier-tools && uv pip install -e .`
+- Install Python dependencies:
+  ```bash
+  cd src-tauri/amplifier-tools
+  python -m venv .venv
+  .venv\Scripts\activate  # Windows, or: source .venv/bin/activate (Mac/Linux)
+  pip install -e .
+  ```
 - Check Python sidecar logs in app console
+- Note: First chat request may take 10-15 seconds as Amplifier Foundation loads bundles from GitHub
 
 ---
 

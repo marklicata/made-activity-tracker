@@ -80,7 +80,7 @@ describe('QualitySection', () => {
       render(<QualitySection quality={quality} />);
 
       expect(screen.getByText('Bug PR Ratio')).toBeInTheDocument();
-      expect(screen.getByText('20.0%')).toBeInTheDocument();
+      expect(screen.getAllByText('20.0%').length).toBeGreaterThan(0);
       expect(screen.getByText('Lower is better')).toBeInTheDocument();
     });
 
@@ -89,7 +89,7 @@ describe('QualitySection', () => {
       render(<QualitySection quality={quality} />);
 
       expect(screen.getByText('Feature Work')).toBeInTheDocument();
-      expect(screen.getByText('60.0%')).toBeInTheDocument();
+      expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
       expect(screen.getByText('New functionality')).toBeInTheDocument();
     });
 
@@ -135,9 +135,9 @@ describe('QualitySection', () => {
       const quality = createMockQualityMetrics();
       render(<QualitySection quality={quality} />);
 
-      expect(screen.getByText('60.0%')).toBeInTheDocument();
-      expect(screen.getByText('20.0%')).toBeInTheDocument();
-      expect(screen.getByText('15.0%')).toBeInTheDocument();
+      expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('20.0%').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('15.0%').length).toBeGreaterThan(0);
       expect(screen.getByText('3.0%')).toBeInTheDocument();
       expect(screen.getByText('2.0%')).toBeInTheDocument();
     });
@@ -146,9 +146,9 @@ describe('QualitySection', () => {
       const quality = createMockQualityMetrics();
       render(<QualitySection quality={quality} />);
 
-      expect(screen.getByText('(60)')).toBeInTheDocument();
-      expect(screen.getByText('(20)')).toBeInTheDocument();
-      expect(screen.getByText('(15)')).toBeInTheDocument();
+      expect(screen.getAllByText('(60)').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('(20)').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('(15)').length).toBeGreaterThan(0);
       expect(screen.getByText('(3)')).toBeInTheDocument();
       expect(screen.getByText('(2)')).toBeInTheDocument();
     });

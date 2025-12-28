@@ -56,3 +56,8 @@ src-tauri/.fastembed_cache/
 
 # Claude Code
 .claude/
+
+# Python venv for AI chat
+src-tauri/amplifier-tools/.venv/
+src-tauri/amplifier-tools/__pycache__/
+src-tauri/amplifier-tools/**/*.pyc

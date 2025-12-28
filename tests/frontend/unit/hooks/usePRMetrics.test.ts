@@ -102,11 +102,12 @@ describe('usePRMetrics', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
+    // Suppress console.error for error handling tests
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   describe('Initial Data Fetching', () => {
@@ -231,8 +232,8 @@ describe('usePRMetrics', () => {
         expect(result.current.error).toBe('First error');
       });
 
-      // Call refresh to retry
-      await result.current.refresh();
+      // Call refresh to retry - wrapped in act via waitFor
+      result.current.refresh();
 
       await waitFor(() => {
         expect(result.current.error).toBe(null);
@@ -300,8 +301,8 @@ describe('usePRMetrics', () => {
 
       expect(mockInvoke).toHaveBeenCalledTimes(1);
 
-      // Call refresh manually
-      await result.current.refresh();
+      // Call refresh manually - wrapped in act via waitFor
+      result.current.refresh();
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledTimes(2);
@@ -309,7 +310,7 @@ describe('usePRMetrics', () => {
     });
 
     it('sets loading state during manual refresh', async () => {
-      mockInvoke.mockResolvedValue(mockMetrics);
+      mockInvoke.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(mockMetrics), 100)));
 
       const { result } = renderHook(() => usePRMetrics());
 
@@ -317,97 +318,98 @@ describe('usePRMetrics', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      // Start refresh (don't await)
-      const refreshPromise = result.current.refresh();
+      // Start refresh and wait for loading state
+      result.current.refresh();
 
-      // Should be loading immediately
-      expect(result.current.loading).toBe(true);
+      await waitFor(() => {
+        expect(result.current.loading).toBe(true);
+      });
 
-      await refreshPromise;
-
-      expect(result.current.loading).toBe(false);
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
     });
   });
 
   describe('Auto-refresh', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('does not auto-refresh by default', async () => {
       mockInvoke.mockResolvedValue(mockMetrics);
 
-      const { result } = renderHook(() => usePRMetrics());
+      renderHook(() => usePRMetrics());
 
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
+      // Wait for initial fetch to complete
+      await vi.runAllTimersAsync();
 
       expect(mockInvoke).toHaveBeenCalledTimes(1);
 
-      // Advance time
-      vi.advanceTimersByTime(61000);
+      // No interval should be set, so advancing time shouldn't trigger more fetches
+      mockInvoke.mockClear();
 
-      // Should not have fetched again
-      expect(mockInvoke).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(61000);
+
+      expect(mockInvoke).not.toHaveBeenCalled();
     });
 
     it('auto-refreshes when enabled', async () => {
       mockInvoke.mockResolvedValue(mockMetrics);
 
-      const { result } = renderHook(() =>
+      renderHook(() =>
         usePRMetrics({ autoRefresh: true, refreshInterval: 10000 })
       );
 
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
+      // Wait for initial fetch
+      await vi.advanceTimersByTimeAsync(100);
       expect(mockInvoke).toHaveBeenCalledTimes(1);
 
       // Advance time to trigger refresh
-      vi.advanceTimersByTime(10000);
+      await vi.advanceTimersByTimeAsync(10000);
 
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledTimes(2);
-      });
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
     });
 
     it('auto-refreshes multiple times', async () => {
       mockInvoke.mockResolvedValue(mockMetrics);
 
-      const { result } = renderHook(() =>
+      renderHook(() =>
         usePRMetrics({ autoRefresh: true, refreshInterval: 5000 })
       );
 
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
+      // Wait for initial fetch
+      await vi.advanceTimersByTimeAsync(100);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
 
       // First auto-refresh
-      vi.advanceTimersByTime(5000);
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledTimes(2);
-      });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
 
       // Second auto-refresh
-      vi.advanceTimersByTime(5000);
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledTimes(3);
-      });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(mockInvoke).toHaveBeenCalledTimes(3);
     });
 
     it('cleans up interval on unmount', async () => {
       mockInvoke.mockResolvedValue(mockMetrics);
 
-      const { result, unmount } = renderHook(() =>
+      const { unmount } = renderHook(() =>
         usePRMetrics({ autoRefresh: true, refreshInterval: 10000 })
       );
 
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
+      // Wait for initial fetch
+      await vi.advanceTimersByTimeAsync(100);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
 
       unmount();
 
       // Advance time - should not trigger fetch after unmount
-      vi.advanceTimersByTime(10000);
+      await vi.advanceTimersByTimeAsync(10000);
 
       expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
@@ -419,11 +421,12 @@ describe('usePRMetrics', () => {
         usePRMetrics({ autoRefresh: true, refreshInterval: 0 })
       );
 
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledTimes(1);
-      });
+      // Advance time slightly to complete initial fetch
+      await vi.advanceTimersByTimeAsync(100);
 
-      vi.advanceTimersByTime(100000);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(100000);
 
       expect(mockInvoke).toHaveBeenCalledTimes(1);
     });

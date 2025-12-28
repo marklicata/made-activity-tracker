@@ -1,0 +1,5 @@
+# Ignore Python venv to prevent Tauri rebuilds when Amplifier downloads modules
+amplifier-tools/.venv/**
+amplifier-tools/__pycache__/
+amplifier-tools/**/*.pyc
+amplifier-tools/.installed

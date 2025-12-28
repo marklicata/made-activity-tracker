@@ -200,9 +200,9 @@ mod tests {
             milestone_id: None,
             created_at: created_at.to_string(),
             updated_at: created_at.to_string(),
+            sync_updated_at: None,
             closed_at: closed_at.map(|s| s.to_string()),
             labels: labels.into_iter().map(|s| s.to_string()).collect(),
-            embedding_id: None,
         }
     }
 
@@ -218,6 +218,7 @@ mod tests {
             author_id: None,
             created_at: created_at.to_string(),
             updated_at: created_at.to_string(),
+            sync_updated_at: None,
             merged_at: merged_at.map(|s| s.to_string()),
             closed_at: merged_at.map(|s| s.to_string()),
             additions,
@@ -225,7 +226,6 @@ mod tests {
             changed_files: 1,
             review_comments: 2,
             labels: vec![],
-            embedding_id: None,
         }
     }
 

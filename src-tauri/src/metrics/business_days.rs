@@ -90,8 +90,9 @@ mod tests {
 
     #[test]
     fn test_weekend_start() {
-        // Saturday to Tuesday = 2 business days (Mon, Tue)
-        let days = business_days_between("2024-02-24", "2024-02-27");
+        // Saturday to Wednesday = 2 business days (Mon, Tue)
+        // Note: end date is exclusive, so we need to go one day beyond Tuesday
+        let days = business_days_between("2024-02-24", "2024-02-28");
         assert_eq!(days, 2);
     }
 

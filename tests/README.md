@@ -44,28 +44,60 @@ tests/
     └── mcp/
 ```
 
-## Running Tests
+## Setup
 
-### Rust Tests
+Before running tests, ensure dependencies are installed:
+
 ```bash
-cd frontend/src-tauri
-cargo test
+# From project root
+npm install
+
+# Install Playwright browsers for E2E tests
+npx playwright install
+
+# Install Rust toolchain if not already installed
+# Visit https://rustup.rs/
 ```
 
-### Frontend Tests
+## Running Tests
+
+### Frontend Unit Tests
 ```bash
-cd frontend
-npm test          # Unit tests with Vitest
+# From project root
+npm test          # Run all unit tests with Vitest
+npm run test:ui   # Run with interactive UI
+```
+
+### E2E Tests
+```bash
+# From project root
 npm run test:e2e  # E2E tests with Playwright
 ```
 
-### Coverage
+### Rust Tests
 ```bash
-# Rust coverage
-cargo tarpaulin --out Html
+# From project root
+cd src-tauri
+cargo test
 
-# Frontend coverage
+# Or from tests/ directory
+cd ../src-tauri
+cargo test
+```
+
+### Coverage
+
+#### Frontend Coverage
+```bash
+# From project root
 npm run test:coverage
+```
+
+#### Rust Coverage
+```bash
+# From src-tauri directory
+# First install tarpaulin: cargo install cargo-tarpaulin
+cargo tarpaulin --out Html
 ```
 
 ## Coverage Targets
