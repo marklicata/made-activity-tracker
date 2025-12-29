@@ -6,6 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "amplifier-core @ git+https://github.com/microsoft/amplifier-core",
     "amplifier-foundation @ git+https://github.com/microsoft/amplifier-foundation",
+    "amplifier-module-provider-anthropic @ git+https://github.com/microsoft/amplifier-module-provider-anthropic",
+    "amplifier-module-provider-openai @ git+https://github.com/microsoft/amplifier-module-provider-openai",
     "anthropic>=0.18.0",
     "flask[async]>=3.0.0",
     "flask-cors>=4.0.0",

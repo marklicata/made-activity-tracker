@@ -25,6 +25,7 @@ logs/
 .env.local
 .env.*.local
 keys.env
+.venv/
 
 # Token storage (fallback for WSL)
 .config/made-activity-tracker/.token
