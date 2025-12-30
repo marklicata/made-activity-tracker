@@ -9,7 +9,6 @@ Provides three capabilities:
 from typing import Any, Dict, List, Optional
 from .db_connection import db
 
-
 class _GetMetricsTool:
     """Tool for querying GitHub activity metrics."""
 
@@ -417,19 +416,22 @@ async def mount(coordinator: Any, config: Dict[str, Any]) -> Any:
         config: Tool configuration from the bundle.
 
     Returns:
-        Dictionary with tools list and cleanup function.
+        Cleanup function.
     """
-    tools = [
-        _GetMetricsTool(),
-        _SearchGitHubItemsTool(),
-        _GetUserActivityTool()
-    ]
+    # Create tool instances
+    metrics_tool = _GetMetricsTool()
+    search_tool = _SearchGitHubItemsTool()
+    user_activity_tool = _GetUserActivityTool()
 
+    # Mount each tool with the coordinator
+    # The coordinator will extract the name from tool.name automatically
+    await coordinator.mount("tools", metrics_tool)
+    await coordinator.mount("tools", search_tool)
+    await coordinator.mount("tools", user_activity_tool)
+
+    # Return cleanup function
     def cleanup():
         """Cleanup function called on session teardown."""
         pass
 
-    return {
-        "tools": tools,
-        "cleanup": cleanup
-    }
+    return cleanup

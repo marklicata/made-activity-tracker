@@ -22,3 +22,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/made_activity_tools"]
+
+[project.entry-points."amplifier.tools"]
+made-activity-tools = "made_activity_tools.tool_module:mount"
+
+

@@ -8,11 +8,10 @@ includes:
   # Foundation bundle provides core tools and behaviors
   - git+https://github.com/microsoft/amplifier-foundation@main
 
-# Tools configuration commented out due to path resolution issues when composing bundles
-# tools:
-#   - module: made-activity-tools
-#     source: file://./src/made_activity_tools/tool_module.py
-#     config: {}
+tools:
+  - module: made-activity-tools
+    source: file://./src/made_activity_tools/tool_module.py
+    config: {}
 ---
 
 # MADE Activity Tracker Assistant
