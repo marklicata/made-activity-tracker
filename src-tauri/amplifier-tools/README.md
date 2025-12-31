@@ -242,7 +242,18 @@ Process chat message through Amplifier.
 **POST /shutdown**
 Gracefully shutdown server.
 
-## Development
+### 2. search_github_items
+Search issues and pull requests by text query. Searches titles, bodies, and labels.
+Can filter by state, type, repository, and labels.
+
+### 3. get_user_activity
+Get user activity summaries including:
+- Total PRs created
+- Total reviews performed
+- Total commits
+- Repositories contributed to
+
+## Running the Server
 
 ### Testing Tools Directly
 

@@ -147,6 +147,32 @@ impl AmplifierSidecar {
         self.process = Some(child);
         tracing::info!("✓ Amplifier sidecar startup complete");
 
+        // Check if process is still running and read any errors
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                tracing::error!("✗ Python process exited prematurely with status: {}", status);
+                if let Some(stderr) = stderr {
+                    let reader = BufReader::new(stderr);
+                    tracing::error!("Python stderr output:");
+                    for line in reader.lines().take(20) {
+                        if let Ok(line) = line {
+                            tracing::error!("  {}", line);
+                        }
+                    }
+                }
+                return Err(anyhow!("Python server failed to start - process exited with {}", status));
+            }
+            Ok(None) => {
+                tracing::info!("✓ Python process is still running");
+            }
+            Err(e) => {
+                tracing::warn!("⚠ Could not check process status: {}", e);
+            }
+        }
+
+        self.process = Some(child);
+        tracing::info!("✓ Amplifier sidecar startup complete");
+
         Ok(())
     }
 

@@ -92,6 +92,37 @@ async def get_amplifier_session():
     return _amplifier_session
 
 
+async def get_amplifier_session():
+    """Get or create Amplifier session."""
+    global _amplifier_session
+    if _amplifier_session is None:
+        # Ensure API key is in environment for provider modules to pick up
+        if PROVIDER == 'anthropic' and API_KEY:
+            os.environ['ANTHROPIC_API_KEY'] = API_KEY
+        elif PROVIDER == 'openai' and API_KEY:
+            os.environ['OPENAI_API_KEY'] = API_KEY
+
+        # Get the directory where this script is located
+        server_dir = Path(__file__).parent.parent.parent.resolve()
+        
+        # Load local bundle
+        bundle_path = server_dir / "bundle.md"
+        base_bundle = await load_bundle(str(bundle_path))
+        
+        # Load provider configuration
+        provider_path = server_dir / "providers" / f"{PROVIDER}.yaml"
+        provider_bundle = await load_bundle(str(provider_path))
+        
+        # Compose bundles (foundation from includes + provider + tools)
+        composed = base_bundle.compose(provider_bundle)
+        
+        # Prepare and create session
+        prepared = await composed.prepare()
+        _amplifier_session = await prepared.create_session()
+
+    return _amplifier_session
+
+
 @app.route('/chat', methods=['POST'])
 async def chat():
     """Process chat message through Amplifier."""

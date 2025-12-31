@@ -87,10 +87,9 @@ A desktop application for tracking GitHub team activity across multiple reposito
    - Install from: https://cli.github.com
    - Run: `gh auth login`
 
-5. **Python 3.11+** (for AI Chat Panel):
+5. **Python 3.9+** (for AI Chat Panel):
    - Install Python from: https://www.python.org/downloads/
    - Verify installation: `python --version`
-   - Required for Amplifier Foundation integration
 
 6. **Anthropic or OpenAI API Key** (for AI Chat Panel):
    - Get Anthropic key: https://console.anthropic.com/
