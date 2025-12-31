@@ -1,255 +1,391 @@
-# Quick Start - Building and Running the App
+# Quick Start Guide
 
-## TL;DR - The Fix
-
-**Problem:** Build fails with `ort` (ONNX Runtime) compilation errors  
-**Solution:** Updated `fastembed` dependency in `Cargo.toml` to use compatible version  
-**Status:** Ready to build (will take 15-20 min on first run)
+Get the MADE Activity Tracker up and running in minutes.
 
 ---
 
-## Understanding the Build Process
+## Prerequisites
 
-### Two separate build steps:
+Before you start, ensure you have:
 
-1. **Frontend Build** (`npm run build` in root or `src-tauri/`)
-   - Compiles TypeScript → JavaScript
-   - Bundles with Vite
-   - Fast (~30 seconds)
-   - ✅ This was working fine
-
-2. **Rust Backend Build** (happens during `npm run tauri dev`)
-   - Compiles 600+ Rust crates (dependencies)
-   - Includes ONNX Runtime (machine learning)
-   - Slow on first build (10-20 minutes)
-   - ❌ This was failing
+1. **Node.js 18+** and npm
+2. **Rust 1.75+** ([install via rustup](https://rustup.rs/))
+3. **Python 3.11+** (for AI Chat features)
+4. **GitHub OAuth App** with Device Flow enabled
+   - Create at: https://github.com/settings/developers
+   - Copy your Client ID
+5. **API Key** (for AI Chat):
+   - Anthropic: https://console.anthropic.com/
+   - OR OpenAI: https://platform.openai.com/api-keys
 
 ---
 
-## What Was Wrong
+## Installation Steps
 
-The `fastembed` crate (used for semantic search embeddings) was pulling in:
-```
-ort v2.0.0-rc.4  ← Release candidate with breaking changes
-```
-
-This RC version has type system incompatibilities causing errors like:
-- `E0599: no method named 'expect' found`
-- `E0282: type annotations needed`
-- `E0308: mismatched types`
-
----
-
-## What I Fixed
-
-Updated `src-tauri/Cargo.toml`:
-
-```toml
-# Before (broken):
-fastembed = { version = "3.7", default-features = false, features = ["online"] }
-
-# After (fixed):
-fastembed = { version = "4", default-features = false }
-```
-
-This now pulls in `ort v2.0.0-rc.9` which is more stable.
-
----
-
-## How to Build Now
-
-### Option 1: Quick Test (recommended first)
-
-Run the test script:
-```cmd
-test_build.cmd
-```
-
-This will:
-- Check your Rust version
-- Verify dependencies resolve correctly
-- Attempt a full build
-- Show clear success/failure message
-
-### Option 2: Manual Build
+### 1. Clone and Install Dependencies
 
 ```bash
-cd src-tauri
-cargo clean          # Clear old artifacts
-cargo build          # Build in debug mode (faster)
+# Clone the repository (if you haven't already)
+git clone https://github.com/marklicata/made-activity-tracker
+cd made-activity-tracker
+
+# Install npm packages
+npm install
 ```
 
-**Expected behavior:**
-- You'll see "Compiling ..." for 600+ crates
-- This is NORMAL and takes 10-20 minutes
-- Watch for actual ERROR messages (red text)
-- "warning:" messages are usually okay
+### 2. Setup Python Environment (for AI Chat)
 
-### Option 3: Skip to Dev Mode
+```bash
+cd src-tauri/amplifier-tools
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# Windows:
+.venv\Scripts\activate
+# Mac/Linux:
+source .venv/bin/activate
+
+# Install Python dependencies
+pip install -e .
+
+# Verify entry points are registered
+python -c "import pkg_resources; [print(ep) for ep in pkg_resources.iter_entry_points('amplifier.modules')]"
+# Should show: made-activity-tools = made_activity_tools.activity_tracking_tools:mount
+
+cd ../..
+```
+
+**Note**: The Python setup also runs automatically via the `setup:python` npm script, but manual setup ensures everything is configured correctly.
+
+### 3. Configure GitHub OAuth
+
+Edit `src-tauri/src/github/commands.rs`:
+
+```rust
+// Replace with your GitHub OAuth App Client ID
+const GITHUB_CLIENT_ID: &str = "YOUR_CLIENT_ID_HERE";
+```
+
+### 4. Set Environment Variables
+
+```bash
+# Windows (PowerShell):
+$env:ANTHROPIC_API_KEY = "your-key-here"
+# OR
+$env:OPENAI_API_KEY = "your-key-here"
+
+# Mac/Linux:
+export ANTHROPIC_API_KEY="your-key-here"
+# OR
+export OPENAI_API_KEY="your-key-here"
+```
+
+**Tip**: Add these to your shell profile (`.bashrc`, `.zshrc`, or PowerShell profile) to persist across sessions.
+
+---
+
+## Running the Application
+
+### Development Mode
 
 ```bash
 npm run tauri dev
 ```
 
-This builds AND runs the app. Same long compile time on first run.
+**What happens:**
+1. Frontend builds with Vite (~30 seconds)
+2. Rust backend compiles (10-20 minutes on first build)
+3. Python sidecar starts automatically
+4. Application window opens
 
----
+**First Build Notes:**
+- Rust compilation includes 600+ crates - this is normal
+- Subsequent builds are much faster (30-60 seconds)
+- FastEmbed downloads ~80MB model on first semantic search use
 
-## Progress Indicators
+### Alternative: Run Components Separately
 
-During build, you'll see:
-```
-Compiling proc-macro2 v1.0.76
-Compiling unicode-ident v1.0.12
-Compiling libc v0.2.153
-...
-(598 more crates)
-...
-Compiling made-activity-tracker v0.1.0
-```
-
-**This is normal!** Each crate only compiles once, then gets cached.
-
-Subsequent builds are MUCH faster (30-60 seconds).
-
----
-
-## If Build Still Fails
-
-### Check 1: Verify the fix was applied
 ```bash
+# Terminal 1: Frontend only
+npm run dev:frontend
+
+# Terminal 2: Backend only
+npm run dev:backend
+
+# Terminal 3: Full Tauri app
+npm run tauri dev
+```
+
+---
+
+## First Time Setup (In App)
+
+### 1. Login with GitHub
+
+1. Click "Sign in with GitHub"
+2. Browser opens with device code prompt
+3. Enter the code shown in the app
+4. Approve OAuth permissions
+5. Return to app - you're logged in!
+
+### 2. Add Repositories
+
+1. Navigate to **Settings** → **Repositories**
+2. Add repositories in `owner/repo` format:
+   - Example: `facebook/react`
+   - Example: `microsoft/vscode`
+3. Enable/disable repos as needed
+
+### 3. (Optional) Configure Squads
+
+1. Go to **Settings** → **Squads**
+2. Create team groups
+3. Add GitHub usernames to each squad
+4. Assign colors for visual identification
+
+### 4. First Sync
+
+1. Click "Sync Now" in the dashboard
+2. Initial sync takes 2-5 minutes for ~25 repos
+3. Watch the progress bar
+4. Data is now available for analysis!
+
+---
+
+## Using Key Features
+
+### Dashboard & Metrics
+
+- **Amplifier View**: Toggle to see industry benchmark comparisons
+- **DORA View**: Traditional DevOps metrics
+- **Filter Panel**: Filter by date range, repositories, squads, users
+- **Filters persist** across page navigation and app restarts
+
+### AI Chat Assistant
+
+1. Click the **chat icon** in the top navigation
+2. Chat panel slides in from the right
+3. Ask natural language questions:
+   - "What's our average cycle time this month?"
+   - "Show me bugs related to authentication"
+   - "What has Alice been working on?"
+4. AI uses three specialized tools:
+   - `get_metrics`: Speed, ease, quality metrics
+   - `search_github_items`: Search issues/PRs
+   - `get_user_activity`: User activity summaries
+
+**AI Chat Architecture:**
+- Powered by Microsoft Amplifier Foundation
+- Tools registered via Python package entry points
+- Runs as Python sidecar process (Flask server)
+- Supports Anthropic Claude and OpenAI GPT models
+
+### Team Tracking
+
+1. Navigate to **Team View**
+2. Enter GitHub usernames to track
+3. View aggregate metrics and user cards
+4. Click any user for detailed analysis
+5. Export reports to CSV
+
+### Project Deep Dive
+
+1. Go to **Projects** list
+2. Click any repository
+3. Explore:
+   - Timeline of all activity
+   - Contributor rankings
+   - Activity heatmap
+   - Lifecycle metrics
+
+---
+
+## Testing
+
+```bash
+# Run frontend tests
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run E2E tests
+npm run test:e2e
+
+# Run Rust tests
 cd src-tauri
-findstr /C:"fastembed" Cargo.toml
+cargo test
 ```
 
-Should show:
-```toml
-fastembed = { version = "4", default-features = false }
-```
+**Current Test Status:**
+- 9 test files passed
+- 235 tests passed
+- 41 tests marked as todo (future work)
+- Coverage includes: hooks, components, utilities, metrics
 
-### Check 2: Verify dependency versions
+---
+
+## Build for Production
+
 ```bash
-cargo tree -i ort
+# Build release version
+npm run build:release
+
+# Output location:
+# Windows: src-tauri/target/release/made-activity-tracker.exe
+# Mac: src-tauri/target/release/made-activity-tracker
+# Linux: src-tauri/target/release/made-activity-tracker
 ```
 
-Should show `ort v2.0.0-rc.9` or higher (not rc.4).
+**Release build takes longer** (30-60 minutes) but produces optimized binaries.
 
-### Check 3: Platform-specific dependencies
+---
 
-**Windows:**
-- Need Visual Studio Build Tools with C++ workload
-- See: `TROUBLESHOOTING.md` section on `webview2-com-sys`
+## Troubleshooting Quick Fixes
 
-**Linux:**
-```bash
-sudo apt install libssl-dev pkg-config
-```
+### Build Fails
 
-**macOS:**
-```bash
-xcode-select --install
-```
-
-### Check 4: Rust version
+**Check Rust version:**
 ```bash
 rustc --version  # Should be 1.75+
 rustup update stable
 ```
 
----
-
-## Alternative: Disable Embeddings Temporarily
-
-If you want to develop WITHOUT the semantic search feature while debugging:
-
-1. Comment out fastembed in `src-tauri/Cargo.toml`:
-   ```toml
-   # fastembed = { version = "4", default-features = false }
-   ```
-
-2. Stub out the embeddings module in `src-tauri/src/embeddings/mod.rs`:
-   ```rust
-   pub mod generator;
-   use anyhow::Result;
-   
-   pub fn generate_embeddings(_texts: &[String]) -> Result<Vec<Vec<f32>>> {
-       Ok(vec![])  // Disabled
-   }
-   
-   pub fn generate_embedding(_text: &str) -> Result<Vec<f32>> {
-       Ok(vec![])  // Disabled
-   }
-   ```
-
-3. Build should complete in ~5 minutes instead of 15-20 minutes
-
-You can add embeddings back later when the ecosystem stabilizes.
-
----
-
-## Success Indicators
-
-Build succeeded if you see:
-```
-Finished `dev` profile [unoptimized + debuginfo] target(s) in X.XXm
+**Clean build artifacts:**
+```bash
+cd src-tauri
+cargo clean
+cd ..
+npm run tauri dev
 ```
 
-Then the app window should launch automatically with `npm run tauri dev`.
+### AI Chat Not Working
+
+**Verify Python setup:**
+```bash
+cd src-tauri/amplifier-tools
+python --version  # Should be 3.11+
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Mac/Linux
+pip list | grep amplifier  # Should show 4 amplifier packages
+```
+
+**Check API key:**
+```bash
+# Windows:
+echo %ANTHROPIC_API_KEY%
+# Mac/Linux:
+echo $ANTHROPIC_API_KEY
+```
+
+**View sidecar logs:**
+Open app → Press F12 → Check console for Python sidecar output
+
+### GitHub Sync Issues
+
+**Rate limit exceeded:**
+- Install GitHub CLI: https://cli.github.com
+- Run: `gh auth login`
+- App will automatically use CLI for higher limits
+
+**SAML authentication required:**
+- Install and authenticate with GitHub CLI
+- App falls back to CLI automatically
+
+### Port Conflicts
+
+If AI Chat shows port errors:
+```bash
+# Windows:
+netstat -ano | findstr :5000
+# Mac/Linux:
+lsof -i :5000
+```
+
+Kill the process using port 5000 or change `AMPLIFIER_PORT` in environment variables.
 
 ---
 
 ## Performance Tips
 
-### Speed up builds:
+### Speed Up Development
 
-1. **Use debug builds during development:**
+1. **Use debug builds** during development (default):
    ```bash
-   cargo build          # Fast, large binary
+   npm run tauri dev  # Debug mode, faster compile
    ```
 
-2. **Only use release for production:**
-   ```bash
-   cargo build --release   # Slow, optimized binary
-   ```
+2. **Hot reload**: TypeScript changes reload instantly without Rust rebuild
 
-3. **Incremental compilation (default in dev):**
-   - First build: 15-20 min
-   - Subsequent: 30-60 sec (only changed code recompiles)
+3. **Incremental compilation**: Rust only recompiles changed code after first build
 
-4. **Parallel jobs (if you have 8+ CPU cores):**
+4. **Parallel jobs** (8+ CPU cores):
    ```bash
+   cd src-tauri
    cargo build -j 8
    ```
 
----
+### Reduce Build Time
 
-## Next Steps After Successful Build
+**Disable embeddings temporarily** if you don't need semantic search:
 
-1. **Run the app:**
-   ```bash
-   npm run tauri dev
+1. Comment out in `src-tauri/Cargo.toml`:
+   ```toml
+   # fastembed = { version = "4", default-features = false }
    ```
 
-2. **Check functionality:**
-   - OAuth login should work
-   - Database should initialize
-   - Frontend should load
-   - ⚠️ Embeddings will try to download model (~80MB) on first use
+2. Build time drops from 15-20 minutes to ~5 minutes
 
-3. **Development workflow:**
-   - Edit TypeScript files → hot reload in ~1s
-   - Edit Rust files → incremental rebuild in ~30s
+---
+
+## Next Steps
+
+After successfully running the app:
+
+1. **Read the full README**: Detailed feature documentation
+2. **Check `specs/` folder**: Architecture and design docs
+3. **Review `TROUBLESHOOTING.md`**: Platform-specific issues
+4. **Explore the codebase**: See `src/` for frontend, `src-tauri/src/` for backend
+5. **Run tests**: Ensure everything works in your environment
 
 ---
 
 ## Getting Help
 
-Still stuck? Check:
-- `BUILD_FIX.md` - Detailed technical explanation
-- `TROUBLESHOOTING.md` - Platform-specific issues
-- Build logs: `src-tauri/target/debug/build.log`
+- **Build issues**: See `TROUBLESHOOTING.md`
+- **Architecture questions**: Check `specs/` folder
+- **Test failures**: Run with verbose logging: `RUST_LOG=debug npm run tauri dev`
+- **Feature requests**: Check GitHub issues or create a new one
 
-Or run with verbose logging:
+---
+
+## Summary: From Zero to Running
+
 ```bash
-RUST_LOG=debug npm run tauri dev
+# 1. Install dependencies
+npm install
+
+# 2. Setup Python for AI Chat
+cd src-tauri/amplifier-tools
+python -m venv .venv
+.venv\Scripts\activate  # or: source .venv/bin/activate
+pip install -e .
+cd ../..
+
+# 3. Configure OAuth (edit src-tauri/src/github/commands.rs)
+
+# 4. Set API key
+export ANTHROPIC_API_KEY="your-key"
+
+# 5. Run!
+npm run tauri dev
 ```
+
+First build: 10-20 minutes
+Subsequent builds: 30-60 seconds
+Ready to track GitHub activity!

@@ -42,9 +42,14 @@ A desktop application for tracking GitHub team activity across multiple reposito
 ### ✅ AI Chat Panel
 - **Natural Language Queries**: Ask questions about your GitHub activity
 - **Context-Aware**: Understands current page and filter state
-- **Database Tools**: Custom tools for querying metrics, searching, and user activity
-- **Amplifier Integration**: Powered by Microsoft Amplifier with local Python tools
+- **Three Custom Tools**:
+  - `get_metrics`: Query speed, ease, and quality metrics
+  - `search_github_items`: Search issues and PRs by text
+  - `get_user_activity`: Get user activity summaries
+- **Amplifier Foundation**: Powered by Microsoft Amplifier with bundle composition
+- **Entry Point Architecture**: Tools registered via Python package entry points
 - **Persistent Chat**: Conversation history saved across sessions
+- **Provider Support**: Works with Anthropic Claude or OpenAI GPT models
 - **Smart Responses**: Provides data-driven insights and recommendations
 
 ### ✅ User-Centric View
@@ -82,14 +87,16 @@ A desktop application for tracking GitHub team activity across multiple reposito
    - Install from: https://cli.github.com
    - Run: `gh auth login`
 
-5. **Python 3.9+** (for AI Chat Panel):
+5. **Python 3.11+** (for AI Chat Panel):
    - Install Python from: https://www.python.org/downloads/
    - Verify installation: `python --version`
+   - Required for Amplifier Foundation integration
 
 6. **Anthropic or OpenAI API Key** (for AI Chat Panel):
    - Get Anthropic key: https://console.anthropic.com/
    - Or OpenAI key: https://platform.openai.com/api-keys
    - Set environment variable: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+   - Required for AI-powered natural language queries
 
 ---
 
@@ -102,7 +109,19 @@ A desktop application for tracking GitHub team activity across multiple reposito
 npm install
 
 # Rust dependencies installed automatically on first build
+
+# Python dependencies for AI Chat (optional but recommended)
+cd src-tauri/amplifier-tools
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Mac/Linux
+source .venv/bin/activate
+pip install -e .
+cd ../..
 ```
+
+**Note**: Python setup runs automatically with `npm run tauri dev`, but manual setup ensures faster startup.
 
 ### 2. Configure GitHub OAuth
 
@@ -232,8 +251,17 @@ made-activity-tracker/
 │
 ├── src-tauri/                    # Rust backend
 │   ├── amplifier-tools/          # Python tools for AI chat
+│   │   ├── src/made_activity_tools/
+│   │   │   ├── activity_tracking_tools.py  # Tool implementations
+│   │   │   ├── db_connection.py            # Database utilities
+│   │   │   └── server.py                   # Flask HTTP server
+│   │   ├── bundle.md             # Amplifier bundle configuration
+│   │   ├── providers/            # LLM provider configs
+│   │   └── pyproject.toml        # Python package with entry points
 │   └── src/
-│       ├── ai/                   # AI chat panel integration
+│       ├── ai/                   # AI chat panel integration (Rust)
+│       │   ├── sidecar.rs        # Python sidecar process manager
+│       │   └── commands.rs       # Tauri commands for chat
 │       ├── github/               # Auth, sync, CLI fallback
 │       ├── db/                   # SQLite queries and models
 │       ├── metrics/              # Calculations
@@ -286,16 +314,27 @@ made-activity-tracker/
 ## 🧪 Testing
 
 ```bash
+# Run frontend tests (Vitest)
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run E2E tests (Playwright)
+npm run test:e2e
+
 # Run Rust tests
 cd src-tauri
 cargo test
-
-# Run frontend tests
-npm test
-
-# Run E2E tests
-npm run test:e2e
 ```
+
+**Current Test Coverage** (as of latest build):
+- **Test Files**: 9 passed, 3 skipped
+- **Tests**: 235 passed, 41 todo
+- Coverage includes: hooks, components, utilities, metrics calculations
 
 ---
 
@@ -385,17 +424,29 @@ Config file location: `%APPDATA%\made-activity-tracker\config.json`
 - Check logs: `%APPDATA%\made-activity-tracker\logs`
 
 ### "AI Chat not working"
-- Ensure Python 3.9+ is installed: `python --version`
-- Check API key is set: `echo $ANTHROPIC_API_KEY` (or `$OPENAI_API_KEY`)
-- Install Python dependencies:
+- **Ensure Python 3.11+ is installed**: `python --version`
+- **Check API key is set**:
+  - Windows: `echo %ANTHROPIC_API_KEY%` or `echo %OPENAI_API_KEY%`
+  - Mac/Linux: `echo $ANTHROPIC_API_KEY` or `echo $OPENAI_API_KEY`
+- **Install Python dependencies**:
   ```bash
   cd src-tauri/amplifier-tools
   python -m venv .venv
-  .venv\Scripts\activate  # Windows, or: source .venv/bin/activate (Mac/Linux)
+  .venv\Scripts\activate  # Windows
+  source .venv/bin/activate  # Mac/Linux
   pip install -e .
   ```
-- Check Python sidecar logs in app console
-- Note: First chat request may take 10-15 seconds as Amplifier Foundation loads bundles from GitHub
+- **Verify entry points are registered**:
+  ```bash
+  python -c "import pkg_resources; [print(ep) for ep in pkg_resources.iter_entry_points('amplifier.modules')]"
+  ```
+  Should show: `made-activity-tools = made_activity_tools.activity_tracking_tools:mount`
+- **Check Python sidecar logs** in the app developer console (F12)
+- **Note**: First chat request may take 10-15 seconds as Amplifier Foundation loads bundles from GitHub
+- **Common issues**:
+  - Database path not found: Ensure app has synced at least once
+  - Module import errors: Reinstall with `pip install -e .`
+  - Port conflicts: Check if port 5000 is available
 
 ---
 
