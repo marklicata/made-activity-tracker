@@ -16,7 +16,7 @@ class DatabaseConnection:
             else:  # macOS/Linux
                 base = os.path.expanduser('~/.local/share')
 
-            db_path = os.path.join(base, 'com.made.activity-tracker', 'activity.db')
+            db_path = os.path.join(base, 'com.made.activity-tracker', 'made.db')
 
         self.db_path = db_path
         self._conn = None

@@ -68,6 +68,7 @@ impl AmplifierSidecar {
         tracing::info!("  DATABASE_PATH={}", db_path_for_python);
 
         // Pass through API keys
+        tracing::info!("About to check API keys...");
         let mut has_api_key = false;
         if let Ok(key) = env::var("ANTHROPIC_API_KEY") {
             tracing::info!("Found ANTHROPIC_API_KEY");
@@ -86,22 +87,65 @@ impl AmplifierSidecar {
             tracing::warn!("  ⚠ No API keys found (ANTHROPIC_API_KEY or OPENAI_API_KEY)");
         }
 
+        tracing::info!("About to spawn Python process...");
+        eprintln!("DEBUG: About to spawn Python process at {}", python_exe);
+        
         tracing::info!("Spawning Python server process...");
         let mut child = cmd.spawn()
             .map_err(|e| {
+                eprintln!("DEBUG: Failed to spawn: {}", e);
                 tracing::error!("✗ Failed to spawn Python process: {}", e);
                 anyhow!("Failed to spawn Python process: {}. Python path: {}", e, python_exe)
             })?;
 
+        eprintln!("DEBUG: Spawn succeeded!");
         let pid = child.id();
         tracing::info!("✓ Python server spawned with PID: {}", pid);
+        eprintln!("DEBUG: PID is {}", pid);
 
-        // Capture stderr to check for errors
-        let stderr = child.stderr.take();
+        // Capture stderr/stdout and read in background threads to prevent pipe buffer deadlock
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        eprintln!("[Python stderr] {}", line);
+                    }
+                }
+            });
+        }
+        
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        eprintln!("[Python stdout] {}", line);
+                    }
+                }
+            });
+        }
 
-        // Wait for server to be ready
-        tracing::info!("Waiting 2 seconds for server to initialize...");
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        // Wait for server to be ready - Flask needs time to start
+        tracing::info!("Waiting 5 seconds for server to initialize...");
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
+        // Check if process is still running
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                tracing::error!("✗ Python process exited prematurely with status: {}", status);
+                return Err(anyhow!("Python server failed to start - process exited with {}", status));
+            }
+            Ok(None) => {
+                tracing::info!("✓ Python process is still running");
+            }
+            Err(e) => {
+                tracing::warn!("⚠ Could not check process status: {}", e);
+            }
+        }
+
+        self.process = Some(child);
+        tracing::info!("✓ Amplifier sidecar startup complete");
 
         // Check if process is still running and read any errors
         match child.try_wait() {
