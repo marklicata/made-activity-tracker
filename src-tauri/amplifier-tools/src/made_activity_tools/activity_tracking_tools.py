@@ -5,11 +5,23 @@ Provides three capabilities:
 - search_github_items: Search issues and pull requests
 - get_user_activity: Get user activity summaries
 """
-
+import sys
 from typing import Any, Dict, List, Optional
 from .db_connection import db
+from amplifier_core import (
+    ModuleCoordinator,
+    ChatResponse,
+    TextBlock,
+    Usage,
+    ToolCallBlock,
+    ToolResultBlock,
+    ThinkingBlock,
+    ImageBlock,
+    Message,
+)
 
-class _GetMetricsTool:
+
+class GetMetricsTool:
     """Tool for querying GitHub activity metrics."""
 
     name = "get_metrics"
@@ -157,7 +169,7 @@ Can filter by repositories and users."""
         }
 
 
-class _SearchGitHubItemsTool:
+class SearchGitHubItemsTool:
     """Tool for searching GitHub issues and pull requests."""
 
     name = "search_github_items"
@@ -326,7 +338,7 @@ Can filter by state, type, labels, repository."""
             return results
 
 
-class _GetUserActivityTool:
+class GetUserActivityTool:
     """Tool for getting user activity summaries."""
 
     name = "get_user_activity"
@@ -406,7 +418,7 @@ Returns:
             }
 
 
-async def mount(coordinator: Any, config: Dict[str, Any]) -> Any:
+async def mount(coordinator: ModuleCoordinator, config: dict) -> Any:
     """Mount the MADE Activity tools.
 
     This is the entry point called by amplifier-core when loading the tool module.
@@ -419,19 +431,30 @@ async def mount(coordinator: Any, config: Dict[str, Any]) -> Any:
         Cleanup function.
     """
     # Create tool instances
-    metrics_tool = _GetMetricsTool()
-    search_tool = _SearchGitHubItemsTool()
-    user_activity_tool = _GetUserActivityTool()
-
     # Mount each tool with the coordinator
     # The coordinator will extract the name from tool.name automatically
-    await coordinator.mount("tools", metrics_tool)
-    await coordinator.mount("tools", search_tool)
-    await coordinator.mount("tools", user_activity_tool)
+    try:
+        metrics_tool = GetMetricsTool()
+        await coordinator.mount("tools", metrics_tool, name=metrics_tool.name)
+    except Exception as e:
+        print(f"Error mounting metrics tool: {e}", file=sys.stderr)
+    finally:
+        print(f"Successfully mounted get_metrics tool.", file=sys.stderr)
+    
+    try:
+        search_tool = SearchGitHubItemsTool()
+        await coordinator.mount("tools", search_tool, name=search_tool.name)
+    except Exception as e:
+        print(f"Error mounting search tool: {e}", file=sys.stderr)
+    finally:
+        print(f"Successfully mounted search_github_items tool.", file=sys.stderr)
+    
+    try:
+        user_activity_tool = GetUserActivityTool()
+        await coordinator.mount("tools", user_activity_tool, name=user_activity_tool.name)
+    except Exception as e:
+        print(f"Error mounting tools: {e}", file=sys.stderr)
+    finally:
+        print(f"Successfully mounted get_user_activity tool.", file=sys.stderr)
 
-    # Return cleanup function
-    def cleanup():
-        """Cleanup function called on session teardown."""
-        pass
-
-    return cleanup
+    return None
